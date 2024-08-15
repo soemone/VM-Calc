@@ -1,63 +1,67 @@
-use crate::lexer;
 #[cfg(test)]
 
 // These are just tests. Nothing to see here, that is if physical laws are still the same. I hope they are, at least.
 // If not, this place is gonna need renovation.
 mod tests {
-    use crate::tokens::{NumberType, Token, TokenType, TokenizerError};
+    use crate::{tokens::{NumberType, Token, TokenType}, errors::Error, lexer, utils::Span};
     use super::*;
 
     #[test]
-    fn test_numbers() -> Result<(), ()>{
-        let mut lexer = lexer::Lexer::new("1 2.4 08 5. 0o 0b 0x 0b110 0o01234567 0x0123456789ABCDEFabcdef")?;
+    fn test_numbers() -> Result<(), ()> {
+        let mut lexer = lexer::Lexer::new("1 2.4 08 5. 0o 0b 0x 0b110 0o01234567 0x0123456789ABCDEFabcdef .1")?;
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: 1 }, 0))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(0, 1)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: 3 }, 2))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(2, 5)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: 2 }, 6))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(6, 8)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: 2 }, 9))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(9, 11)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Err(TokenizerError::NumberExpected),
+            Err(Error::TNumberExpected),
         );
 
         assert_eq!(
             lexer.next(), 
-            Err(TokenizerError::NumberExpected),
+            Err(Error::TNumberExpected),
         );
 
         assert_eq!(
             lexer.next(), 
-            Err(TokenizerError::NumberExpected),
+            Err(Error::TNumberExpected),
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Binary, length: 5 }, 21))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Binary }, Span::new(21, 26)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Octal, length: 10 }, 27))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Octal }, Span::new(27, 37)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Number { number_type: NumberType::Hex, length: 24 }, 38))
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Hex }, Span::new(38, 62)))
+        );
+
+        assert_eq!(
+            lexer.next(), 
+            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(63, 65)))
         );
 
         Ok(())
@@ -68,22 +72,22 @@ mod tests {
         let mut lexer = lexer::Lexer::new("a ab abc a~b")?;
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Identifier { length: 1 }, 0))
+            Ok(Token::new(TokenType::Identifier, Span::new(0, 1)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Identifier { length: 2 }, 2))
+            Ok(Token::new(TokenType::Identifier, Span::new(2, 4)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Identifier { length: 3 }, 5))
+            Ok(Token::new(TokenType::Identifier, Span::new(5, 8)))
         );
 
         assert_eq!(
             lexer.next(), 
-            Ok(Token::new(TokenType::Identifier { length: 3 }, 9))
+            Ok(Token::new(TokenType::Identifier, Span::new(9, 12)))
         );
         Ok(())
     }
@@ -125,7 +129,7 @@ mod tests {
         for (item, len) in list {
             assert_eq!(
                 lexer.next(), 
-                Ok(Token::new(item, idx))
+                Ok(Token::new(item, Span::new(idx, idx + len)))
             );
             idx += len + 1;
         }
@@ -134,20 +138,20 @@ mod tests {
 
     #[test]
     fn test_invalid() -> Result<(), ()>{
-        let mut lexer = lexer::Lexer::new("` >")?;
+        let mut lexer = lexer::Lexer::new("\\ >")?;
         assert_eq!(
             lexer.next(), 
-            Err(TokenizerError::InvalidCharacter)
+            Err(Error::TInvalidCharacter)
         );
 
         assert_eq!(
             lexer.next(), 
-            Err(TokenizerError::InvalidCharacter)
+            Err(Error::TInvalidCharacter)
         );
-        
+
         assert_eq!(
             lexer.next(), 
-            Err(TokenizerError::EOF)
+            Err(Error::TEOF)
         );
         Ok(())
     }

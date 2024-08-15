@@ -1,15 +1,16 @@
 use std::str::Chars;
 
-use crate::tokens::{NumberType, Token, TokenType, TokenizerError};
+use crate::{errors::Error, tokens::{NumberType, Token, TokenType}, utils::Span};
 
 pub struct Lexer<'a> {
-    source: &'a str,
+    pub(crate) source: &'a str,
     chars: Chars<'a>,
     current: Option<char>,
     position: usize,
 }
 
 impl Lexer<'_> {
+
     pub fn new(source: &'_ str) -> Result<Lexer, ()> {
         let chars = source.chars();
         Ok(Lexer {
@@ -20,13 +21,13 @@ impl Lexer<'_> {
         })
     }
 
-    pub fn next(&mut self) -> Result<Token, TokenizerError>{
+    pub fn next(&mut self) -> Result<Token, Error>{
         let start = self.position;
 
         macro_rules! token {
             (TokenType::$token_type: ident) => {{
                 self.increment();
-                Ok(Token::new(TokenType::$token_type, start))
+                Ok(Token::new(TokenType::$token_type, Span::new(start, self.position)))
             }};
         }
 
@@ -35,7 +36,7 @@ impl Lexer<'_> {
                 for _ in 0..$number_of_increments {
                     self.increment();
                 }
-                Ok(Token::new(TokenType::$token_type, start))
+                Ok(Token::new(TokenType::$token_type, Span::new(start, self.position)))
             }};
         }
 
@@ -43,7 +44,7 @@ impl Lexer<'_> {
         let next =
             match self.chars.clone().next() {
                 Some(character) => character,
-                None => return Err(TokenizerError::EOF),
+                None => return Err(Error::TEOF),
             };
 
         match next {
@@ -64,9 +65,9 @@ impl Lexer<'_> {
                             self.increment();
                             self.take_while(Self::check_octal);
                             if self.position - start == 2 {
-                                return Err(TokenizerError::NumberExpected);
+                                return Err(Error::TNumberExpected);
                             }
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Octal, length: self.position - start }, start))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Octal }, Span::new(start, self.position)))
                         },
 
                         // Binary
@@ -74,9 +75,9 @@ impl Lexer<'_> {
                             self.increment();
                             self.take_while(Self::check_binary);
                             if self.position - start == 2 {
-                                return Err(TokenizerError::NumberExpected);
+                                return Err(Error::TNumberExpected);
                             }
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Binary, length: self.position - start }, start))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Binary }, Span::new(start, self.position)))
                         }
 
                         // Hex
@@ -84,9 +85,9 @@ impl Lexer<'_> {
                             self.increment();
                             self.take_while(Self::check_hex);
                             if self.position - start == 2 {
-                                return Err(TokenizerError::NumberExpected);
+                                return Err(Error::TNumberExpected);
                             }
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Hex, length: self.position - start }, start))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Hex }, Span::new(start, self.position)))
                         }
 
                         // A number that starts with zero. Why? Why not.
@@ -98,22 +99,23 @@ impl Lexer<'_> {
                                 self.increment();
                             }
                             self.take_while(Self::check_number);
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: self.position - start }, start))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
                         }
 
                         // Floating point expression
                         Some('.') => {
+                            self.increment();
                             match cloned_iter.next() {
                                 Some(character) if Self::check_number(character) => {
                                     self.take_while(Self::check_number);
                                 }
                                 _ => ()
                             }
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: self.position - start }, start))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
                         }
                         _ => {
                             // Just a zero
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: self.position - start }, start))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
                         }
                     }
                 } else {
@@ -124,14 +126,30 @@ impl Lexer<'_> {
                         self.increment();
                         self.take_while(Self::check_number);
                     }
-                    Ok(Token::new(TokenType::Number { number_type: NumberType::Real, length: self.position - start }, start))
+                    Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
                 }
             },
+
+            // Leading decimal real numbers ie. `.15`, `.11111`
+            _ if '.' == next => {
+                self.increment();
+                let mut cloned_iter = self.chars.clone();
+                match cloned_iter.next() { 
+                    Some(character) if Self::check_number(character) => {
+                        self.take_while(Self::check_number);
+                        Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
+                    },
+
+                    _ => {
+                        Err(Error::TInvalidCharacter)
+                    }
+                }
+            }
 
             // Register identifiers
             _ if Self::check_ident_start(next) => {
                 self.take_while(Self::check_ident_continue);
-                Ok(Token::new(TokenType::Identifier { length: self.position - start }, start))
+                Ok(Token::new(TokenType::Identifier, Span::new(start, self.position)))
             },
 
 
@@ -199,7 +217,7 @@ impl Lexer<'_> {
                             _ => variable_token!(0, TokenType::BitLeftShift)
                         }
                     }
-                    _ => Err(TokenizerError::InvalidCharacter)
+                    _ => Err(Error::TInvalidCharacter)
                 }
             },
 
@@ -213,7 +231,7 @@ impl Lexer<'_> {
                             _ => variable_token!(0, TokenType::BitRightShift)
                         }
                     }
-                    _ => Err(TokenizerError::InvalidCharacter)
+                    _ => Err(Error::TInvalidCharacter)
                 }
             },
 
@@ -245,7 +263,7 @@ impl Lexer<'_> {
             _ => {
                 println!("Unrecognized character @ {}", start);
                 self.increment();
-                Err(TokenizerError::InvalidCharacter)
+                Err(Error::TInvalidCharacter)
             },
         }
     }
@@ -267,27 +285,27 @@ impl Lexer<'_> {
             }
     }
 
-    fn get_next(&mut self) -> Result<char, ()> {
-        let character = 
-            self
-                .chars
-                .next()
-                .ok_or(())?;
-        self.position += character.len_utf8();
-        self.current = Some(character);
-        Ok(character)
-    }
+    // fn get_next(&mut self) -> Result<char, ()> {
+    //     let character = 
+    //         self
+    //             .chars
+    //             .next()
+    //             .ok_or(())?;
+    //     self.position += character.len_utf8();
+    //     self.current = Some(character);
+    //     Ok(character)
+    // }
 
-    fn get_next_unchecked(&mut self) -> char {
-        let character = 
-            self
-                .chars
-                .next()
-                .unwrap();
-        self.position += character.len_utf8();
-        self.current = Some(character);
-        character
-    }
+    // fn get_next_unchecked(&mut self) -> char {
+    //     let character = 
+    //         self
+    //             .chars
+    //             .next()
+    //             .unwrap();
+    //     self.position += character.len_utf8();
+    //     self.current = Some(character);
+    //     character
+    // }
 
     fn increment(&mut self) {
         let character = 
@@ -305,13 +323,14 @@ impl Lexer<'_> {
     }
 
     fn check_ident_start(character: char) -> bool {
-        matches!(character, 'A'..='Z' | 'a'..='z' | '_' | '~')
+        character.is_alphabetic() || matches!(character,  '_' | '~' | '#' | '$' | '@' | '`')
     }
 
     fn check_ident_continue(character: char) -> bool {
-        matches!(character, 'A'..='Z' | 'a'..='z' | '_' | '~' | '0'..='9')
+        character.is_alphanumeric() || matches!(character, '_' | '~' | '#' | '$' | '@' | '`')
     }
 
+    /// just a wrapper for now
     fn check_whitespace(character: char) -> bool {
         char::is_whitespace(character)
     }

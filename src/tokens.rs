@@ -1,7 +1,9 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
+
+use crate::utils::Span;
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum NumberType {
     /// 0b1001
     Binary,
@@ -13,18 +15,15 @@ pub enum NumberType {
     Hex,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
     // Basic elements
     /// Numbers of any type
     Number {
         number_type: NumberType,
-        length: usize,
     },
     /// Variables or functions
-    Identifier {
-        length: usize,
-    },
+    Identifier,
 
     // Delimiters
     /// Semicolon to seperate statements
@@ -87,34 +86,91 @@ pub enum TokenType {
 
     /// =
     Equal,
-}
 
-// This technically is not an error enum if it has `EOF` in it.
-// But I have no idea what else to call it
-#[derive(Debug, PartialEq)]
-pub enum TokenizerError {
-    /// An error that occurs when an octal, binary or hexadecimal number provided is incomplete - `0x` `0b` `0o`
-    NumberExpected,
-    /// An error that occurs when an invalid character is encountered
-    InvalidCharacter,
-    /// End of file
+    /// Null token for the parser
+    /// Could have used an Option, but too lazy
+    Null,
+
+    /// End Of File
     EOF,
 }
 
-#[derive(PartialEq)]
+impl Display for TokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Self::Number { number_type } => {
+                match number_type {
+                    NumberType::Binary => "Binary Number",
+                    NumberType::Hex => "Hexadecimal Number",
+                    NumberType::Octal => "Octal Number",
+                    NumberType::Real => "Real Number",
+                }
+            },
+            Self::Identifier => "Identifier",
+            Self::Semicolon => ";",
+            Self::OpeningBracket => "[ | (",
+            Self::ClosingBracket => "] | )",
+            Self::Multiply => "*",
+            Self::MultiplyEqual => "*=",
+            Self::Divide => "/",
+            Self::DivideEqual => "/=",
+            Self::Add => "+",
+            Self::AddEqual => "+=",
+            Self::Subtract => "-",
+            Self::SubtractEqual => "-=",
+            Self::Exponent => "**",
+            Self::ExponentEqual => "**=",
+            Self::BitXor => "^",
+            Self::BitXorEqual => "^=",
+            Self::BitAnd => "&",
+            Self::BitAndEqual => "&=",
+            Self::BitOr => "|",
+            Self::BitOrEqual => "|=",
+            Self::BitLeftShift => "<<",
+            Self::BitLeftShiftEqual => "<<=",
+            Self::BitRightShift => ">>",
+            Self::BitRightShiftEqual => ">>=",
+            Self::Equal => "=",
+            Self::EOF => "End Of File",
+            Self::Null => "Null token. A bug has occured if this has been presented to the output.",
+        };
+        write!(f, "{string}")
+    }
+}
+
+
+#[derive(PartialEq, Clone)]
 pub struct Token {
-    token_type: TokenType,
-    position: usize,
+    pub(crate) token_type: TokenType,
+    pub(crate) span: Span,
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, position: usize) -> Token {
-        Token { token_type, position }
+    pub fn new(token_type: TokenType, span: Span) -> Self {
+        Self { token_type, span }
+    }
+
+    pub fn null() -> Self {
+        Self {
+            token_type: TokenType::Null,
+            span: Span::null(),
+        }
+    }
+
+    pub fn eof(end: usize) -> Self {
+        Self {
+            token_type: TokenType::EOF,
+            span: Span::new(end, end),
+        }
+    }
+
+    pub fn length(&self) -> usize {
+        self.span.length()
     }
 }
 
 impl Debug for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} type @ {}", self.token_type, self.position)
+        write!(f, "{:?} type @ {}", self.token_type, self.span)
     }
 }
