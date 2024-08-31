@@ -16,16 +16,7 @@ mod tests;
 use processchain::ProcessChain;
 
 fn main() -> Result<(), ()> {
-    // run()?;
-    let src = "<id";
-    let mut lexer = lexer::Lexer::new(src).unwrap();
-    loop {
-        match lexer.next() {
-            Ok(result) => println!("OK -> {result:?}"),
-            Err(errors::Error::TEOF) => break,
-            Err(error) => {println!("{error}");},
-        }
-    }
+    run()?;
     Ok(())
 }
 
