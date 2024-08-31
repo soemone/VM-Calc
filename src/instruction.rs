@@ -24,7 +24,7 @@ impl Display for Value {
 }
 
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[repr(align(1))]
 pub enum Instruction<'a> {
     /// Load a value into the stack
@@ -57,6 +57,12 @@ pub enum Instruction<'a> {
         name: &'a str,
     },
 
+    /// Change the value of a variable
+    ReloadSymbolOp {
+        name: &'a str,
+        operator: Operator,
+    },
+
     /// Invoke the value of a variable
     CallSymbol {
         name: &'a str,
@@ -67,8 +73,14 @@ pub enum Instruction<'a> {
         name: &'a str,
     },
 
+    /// A null value
+    Null,
+
     /// Present the result of the previous expression to the terminal
     Output,
+
+    /// A flag to not run the VM when a compiler error has occured
+    CompileError,
 
     /// An illegal instruction
     Illegal,

@@ -1,11 +1,12 @@
 
-use std::{fmt::format, rc::Rc, result};
-use crate::{ast::{Tree, AST}, errors::Error, functions::get_function, lexer::Lexer, tokens::{NumberType, Token, TokenType}, utils::Span};
+use std::rc::Rc;
+use crate::{ast::{Operator, Tree, AST}, errors::Error, functions::get_function, lexer::Lexer, tokens::{NumberType, Token, TokenType}, utils::Span};
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     token: Token,
     pub(crate) eof: bool,
+    empty: bool,
 }
 macro_rules! create_fn {
     ($self: ident, $below_fn: ident, $token_type: pat) => {{
@@ -41,9 +42,11 @@ impl<'a> Parser<'a> {
             token: Token::null(),
             lexer,
             eof: false,
+            empty: false,
         }
     }
 
+    // Used only for tests
     pub fn generate_expressions(&mut self) -> Vec<Result<Rc<Tree<'a>>, Error>> {
         self.increment().ok();
         let mut expressions = vec![];
@@ -62,7 +65,7 @@ impl<'a> Parser<'a> {
 
     pub fn next_expression(&mut self) -> Result<Rc<Tree<'a>>, Error> {
         if self.token.token_type == TokenType::Null {
-            self.increment().ok();
+            self.increment()?;
         }
         self.expression()
     }
@@ -73,12 +76,14 @@ impl<'a> Parser<'a> {
                 self.token = token;
                 Ok(())
             },
+
             // Check if we're at the end of the file.
             Err(Error::TEOF) => {
                 self.eof = true;
                 self.token = Token::eof(self.token.span.end);
                 Ok(())
             },
+
             Err(error) => Err(error)
         }
     }
@@ -96,7 +101,7 @@ impl<'a> Parser<'a> {
                 let span = Span::new(self.token.span.start, self.token.span.start);
                 return 
                     Err(Error::PError {
-                        message: format!("Expected semicolon (`;`) or colon (`:`) after an expression! Found `{}` @ {}", &self.token.token_type, span), 
+                        message: format!("Expected semicolon (`;`) or colon (`:`) after an expression! Found `{}`", &self.lexer.source[self.token.span.as_range()]), 
                         span,
                     });
             },
@@ -231,59 +236,96 @@ impl<'a> Parser<'a> {
                             ))
                         }
                     }
+                } else if name == "Null" {
+                    Ok(Rc::new(
+                        Tree::new(
+                            AST::Null,
+                            Span::new(start, self.token.span.end)
+                        )
+                    ))
                 } else {
-                    // Change assignment of variable
-                    if self.token.token_type == TokenType::Equal {
+
+                    let token = self.token.token_type.clone();
+
+                    let mut assign_type = |operator| -> Result<Rc<Tree<'a>>, Error> {
                         self.increment()?;
                         let result = self.final_stage()?;
                         let end = result.span.end;
                         return Ok(Rc::new(
                             Tree::new(
-                                AST::Assign { identifier: name, identifier_span: Span::new(start, ident_end), value: result },
+                                AST::AssignOp { operator, identifier: name, identifier_span: Span::new(start, ident_end), value: result },
                                 Span::new(start, end)
                             )
                         ));
-                    }
+                    };
 
-                    // Function call
-                    if self.token.token_type == TokenType::OpeningBracket {
-                        self.increment()?;
-                        let expr_start = self.token.span.start;
-                        let mut expressions = vec![];
-                        while self.token.token_type != TokenType::ClosingBracket {
-                            expressions.push(self.final_stage()?);
-                            if self.token.token_type == TokenType::ClosingBracket {
-                                break;
-                            }
-                            self.expect(TokenType::Comma)?;
+                    match token {
+                        // Change variable assignment
+                        TokenType::Equal => {
                             self.increment()?;
-                        }
-                        self.increment()?;
-                        let end = self.token.span.end - 1;
+                            let result = self.final_stage()?;
+                            let end = result.span.end;
+                            return Ok(Rc::new(
+                                Tree::new(
+                                    AST::Assign { identifier: name, identifier_span: Span::new(start, ident_end), value: result },
+                                    Span::new(start, end)
+                                )
+                            ));
+                        },
 
-                        match get_function(name) {
-                            Ok((arg_len, _)) => {
-                                if arg_len != expressions.len() {
-                                    return Err(Error::PError { 
-                                        message: format!("The function `{name}` expected {arg_len} argument(s) but {} argument(s) were found!", expressions.len()), 
-                                        span: Span::new(expr_start, end - 1),
-                                    })
+                        // Function Call
+                        TokenType::OpeningBracket => {
+                            self.increment()?;
+                            let expr_start = self.token.span.start;
+                            let mut expressions = vec![];
+                            while self.token.token_type != TokenType::ClosingBracket {
+                                expressions.push(self.final_stage()?);
+                                if self.token.token_type == TokenType::ClosingBracket {
+                                    break;
                                 }
-                            },
+                                self.expect(TokenType::Comma)?;
+                                self.increment()?;
+                            }
+                            self.increment()?;
+                            let end = self.token.span.end - 1;
+    
+                            match get_function(name) {
+                                Ok((arg_len, _)) => {
+                                    if arg_len != expressions.len() {
+                                        return Err(Error::PError { 
+                                            message: format!("The function `{name}` expected {arg_len} argument(s) but {} argument(s) were found!", expressions.len()), 
+                                            span: Span::new(expr_start, end - 1),
+                                        })
+                                    }
+                                },
+    
+                                Err(()) => return Err(Error::PError { 
+                                    message: format!("The function `{name}` does not exist!"), 
+                                    span: Span::new(start, end),
+                                })
+                            };
+    
+                            return Ok(Rc::new(
+                                Tree::new(
+                                    AST::FunctionCall{ name, expressions },
+                                    Span::new(start, end)
+                                )
+                            ));    
+                        }
+                        
+                        TokenType::AddEqual => return assign_type(Operator::PlusEqual),
+                        TokenType::SubtractEqual => return assign_type(Operator::MinusEqual),
+                        TokenType::MultiplyEqual => return assign_type(Operator::MultiplyEqual),
+                        TokenType::DivideEqual => return assign_type(Operator::DivideEqual),
+                        TokenType::ExponentEqual => return assign_type(Operator::ExponentEqual),
+                        TokenType::BitAndEqual => return assign_type(Operator::BitAndEqual),
+                        TokenType::BitOrEqual => return assign_type(Operator::BitOrEqual),
+                        TokenType::BitXorEqual => return assign_type(Operator::BitXorEqual),
+                        TokenType::BitLeftShiftEqual => return assign_type(Operator::BitLeftShiftEqual),
+                        TokenType::BitRightShiftEqual => return assign_type(Operator::BitRightShiftEqual),
 
-                            Err(()) => return Err(Error::PError { 
-                                message: format!("The function `{name}` does not exist!"), 
-                                span: Span::new(start, end),
-                            })
-                        };
-
-                        return Ok(Rc::new(
-                            Tree::new(
-                                AST::FunctionCall{ name, expressions },
-                                Span::new(start, end)
-                            )
-                        ));
-                    }
+                        _ => ()
+                    };
 
                     let end = self.token.span.end;
                     // An identifier
@@ -314,16 +356,20 @@ impl<'a> Parser<'a> {
                 Ok(result)
             }
 
-            _ => {
+            TokenType::EOF => Err(Error::NoResult),
+
+            token => {
                 self.increment()?;
                 Err(Error::PInvalidStatement {
-                    message: format!("An unexpected or invalid token was found @ {span}"),
+                    message: format!("An unexpected or invalid token `{}` was found", token),
                     span,
                 })
             }
         }
     }
     
+
+
     fn expect(&mut self, token_type: TokenType) -> Result<(), Error> {
         if self.token.token_type != token_type {
             return Err(Error::PError { 

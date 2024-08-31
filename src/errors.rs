@@ -32,23 +32,29 @@ pub enum Error {
         message: String,
         span: Span,
     },
+
+    /// An empty file
+    NoResult
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            Self::TNumberExpected { location } => format!("Expected number @ {location}"),
+            Self::TNumberExpected { location } => format!("[TOKENIZER ERROR]: Expected number @ {location}"),
 
-            Self::TInvalidCharacter { location } => format!("Found invalid character @ {location}"),
+            Self::TInvalidCharacter { location } => format!("[TOKENIZER ERROR]: Found invalid character @ {location}"),
 
-            Self::TInvalidBinary { span } => format!("Invalid Binary number @ {span}"),
+            Self::TInvalidBinary { span } => format!("[TOKENIZER ERROR]: Invalid Binary number @ {span}"),
 
-            Self::TInvalidOctal { span } => format!("Invalid Octal number @ {span}"),
+            Self::TInvalidOctal { span } => format!("[TOKENIZER ERROR]: Invalid Octal number @ {span}"),
+
+            // Usually when the file is empty and an early EOF has been produced
+            Self::NoResult => format!(""),
 
             Self::TEOF => format!("End of file reached. No new tokens can be generated"),
 
             Self::PError { message, span } | Self::PInvalidStatement { message, span } => {
-                format!("[PARSE ERROR] ({span}): {message}")
+                format!("[PARSE ERROR] {span}: {message}")
             },
 
             Self::PInternalError { message, span: _ } => {

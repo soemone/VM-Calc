@@ -1,4 +1,4 @@
-use std::{panic::Location, str::Chars};
+use std::str::Chars;
 use crate::{errors::Error, tokens::{NumberType, Token, TokenType}, utils::Span};
 
 pub struct Lexer<'a> {
@@ -43,7 +43,9 @@ impl Lexer<'_> {
         let next =
             match self.chars.clone().next() {
                 Some(character) => character,
-                None => return Err(Error::TEOF),
+                None => {
+                    return Err(Error::TEOF)
+                },
             };
 
         match next {
@@ -157,7 +159,7 @@ impl Lexer<'_> {
                         Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
                     },
 
-                    _ => Err(Error::TInvalidCharacter { location: self.position + 1 })
+                    _ => Err(Error::TInvalidCharacter { location: self.position - 1 })
                 }
             }
 
@@ -280,7 +282,6 @@ impl Lexer<'_> {
 
             // Invalid characters
             _ => {
-                println!("Unrecognized character @ {}", start);
                 let location = self.position;
                 self.increment();
                 Err(Error::TInvalidCharacter { location })
@@ -336,20 +337,6 @@ impl Lexer<'_> {
     fn check_number(character: char) -> bool {
         matches!(character, '0'..='9')
     }
-
-    // fn check_octal(character: char) -> Result<bool, Error> {
-    //     if matches!(character, '0'..='7') {
-    //         Ok(true)
-    //     } else if matches!(character, '8'..='9') {
-    //         Err(Error::TInvalidOctal)
-    //     } else {
-    //         Ok(false)
-    //     }
-    // }
-    
-    // fn check_binary(character: char) -> bool {
-    //     matches!(character, '0'..='1')
-    // }
 
     fn check_hex(character: char) -> bool {
         matches!(character, '0'..='9' | 'A'..='F' | 'a'..='f')

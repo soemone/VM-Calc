@@ -1,25 +1,14 @@
 use std::{borrow::Borrow, rc::Rc};
-use crate::{ast::{Tree, AST}, instruction::{Instruction, Value}, parser::Parser};
-
-pub fn as_u8_slice<T>(p: &[T]) -> &[u8] {
-    unsafe {
-        core::slice::from_raw_parts((p as *const [T]) as *const u8, core::mem::size_of_val(p))
-    }
-}
-
-pub fn from_u8_slice(buf: &[u8]) -> Bytecode {
-    let p = buf.as_ptr() as *const Bytecode;
-    let a_ref = unsafe { &*p };
-    unsafe { std::mem::transmute_copy::<Bytecode, Bytecode>(a_ref) }
-}
+use crate::{ast::{Tree, AST}, errors::Error, instruction::{Instruction, Value}, parser::Parser};
 
 pub struct Bytecode<'a> {
-    parser: Parser<'a>
+    parser: Parser<'a>,
+    error: bool
 }
 
 impl<'a> Bytecode<'a> {
     pub fn new(parser: Parser<'a>) -> Self {
-        Self { parser }
+        Self { parser, error: false }
     }
 
     pub fn generate_bytecode(&mut self) -> Vec<Instruction<'a>> {
@@ -30,7 +19,12 @@ impl<'a> Bytecode<'a> {
                     complete_bytecode.append(&mut Self::traverse(&tree));
                 }
                 Err(error) => {
-                    println!("{error}");
+                    self.error = true;
+                    complete_bytecode.clear();
+                    complete_bytecode.push(Instruction::CompileError);
+                    if error != Error::NoResult {
+                        println!("{error}");
+                    }
                 }
             }
 
@@ -75,6 +69,12 @@ impl<'a> Bytecode<'a> {
                 instructions.push(Instruction::ReloadSymbol { name: identifier });
                 instructions
             }
+
+            AST::AssignOp { identifier, operator, value, .. } => {
+                let mut instructions = Self::traverse(value);
+                instructions.push(Instruction::ReloadSymbolOp { name: identifier, operator: *operator });
+                instructions
+            }
             
             AST::Identifier { name } => {
                 vec![Instruction::CallSymbol { name }]
@@ -94,6 +94,8 @@ impl<'a> Bytecode<'a> {
                 instructions.push(Instruction::FunctionCall { name });
                 instructions
             }
+
+            AST::Null => vec![Instruction::Null],
 
             _ => vec![Instruction::Illegal],
         }

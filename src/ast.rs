@@ -7,15 +7,25 @@ use crate::{tokens::TokenType, utils::Span};
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum Operator {
     Plus,
+    PlusEqual,
     Minus,
+    MinusEqual,
     Divide,
+    DivideEqual,
     Multiply,
+    MultiplyEqual,
     Exponent,
+    ExponentEqual,
     BitAnd,
     BitOr,
     BitXor,
     BitLeftShift,
     BitRightShift,
+    BitAndEqual,
+    BitOrEqual,
+    BitXorEqual,
+    BitLeftShiftEqual,
+    BitRightShiftEqual,
 }
 
 impl Display for Operator {
@@ -31,6 +41,16 @@ impl Display for Operator {
             Self::BitXor => "^",
             Self::BitRightShift => ">>",
             Self::BitLeftShift => "<<",
+            Self::PlusEqual => "+=",
+            Self::MinusEqual => "-=",
+            Self::DivideEqual => "/=",
+            Self::MultiplyEqual => "*=",
+            Self::ExponentEqual => "**=",
+            Self::BitAndEqual => "&=",
+            Self::BitOrEqual => "|=",
+            Self::BitXorEqual => "^=",
+            Self::BitLeftShiftEqual => "<<=",
+            Self::BitRightShiftEqual => ">>=",
         };
         write!(f, "{res}")
     }
@@ -40,10 +60,15 @@ impl From<TokenType> for Operator {
     fn from(value: TokenType) -> Self {
         match value {
             TokenType::Add => Self::Plus,
+            TokenType::AddEqual => Self::Plus,
             TokenType::Subtract => Self::Minus,
+            TokenType::SubtractEqual => Self::MinusEqual,
             TokenType::Divide => Self::Divide,
+            TokenType::DivideEqual => Self::DivideEqual,
             TokenType::Multiply => Self::Multiply,
+            TokenType::MultiplyEqual => Self::MultiplyEqual,
             TokenType::Exponent => Self::Exponent,
+            TokenType::ExponentEqual => Self::ExponentEqual,
             TokenType::BitAnd => Self::BitAnd,
             TokenType::BitXor => Self::BitXor,
             TokenType::BitOr => Self::BitOr,
@@ -113,6 +138,13 @@ pub enum AST<'a> {
         value: Rc<Tree<'a>>,
     },
 
+    AssignOp {
+        identifier: &'a str,
+        identifier_span: Span,
+        value: Rc<Tree<'a>>,
+        operator: Operator,
+    },
+
     Output {
         value: Rc<Tree<'a>>,
     },
@@ -122,17 +154,21 @@ pub enum AST<'a> {
         expressions: Vec<Rc<Tree<'a>>>,
     },
 
+    Null,
+
     Invalid,
 }
 
 impl Display for AST<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Null => write!(f, "{}Null{}", "{", "}"),
             Self::BinaryOp { lhs, rhs, op } =>  write!(f, "({lhs} {op} {rhs})"),
             Self::UnaryOp { rhs, op } =>  write!(f, "({op}{rhs})"),
             Self::Number { value } =>  write!(f, "{value}"),
             Self::Identifier { name } =>  write!(f, "{name}"),
             Self::Assign { identifier, value, identifier_span: _} =>  write!(f, "({identifier} = {value})"),
+            Self::AssignOp { operator, identifier, value, identifier_span: _} =>  write!(f, "({identifier} {operator}= {value})"),
             Self::Declare { identifier, identifier_span: _ } =>  write!(f, "(let {identifier})"),
             Self::DeclareAssign { identifier, value, identifier_span: _ } =>  write!(f, "(let {identifier} = {value})"),
             Self::Output { value } => write!(f, "*{value}*"),

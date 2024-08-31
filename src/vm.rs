@@ -12,7 +12,7 @@ pub struct VM<'a> {
     instructions: Vec<Instruction<'a>>,
     stack: Vec<Value>,
     pc: usize,
-    symbols: HashMap<&'a str, Value>
+    pub(crate) symbols: HashMap<&'a str, Value>
 }
 
 impl<'a> VM<'a> {
@@ -25,7 +25,20 @@ impl<'a> VM<'a> {
         }
     }
 
+    pub fn new_with_symbols(instructions: Vec<Instruction<'a>>, symbols: HashMap<&'a str, Value>) -> Self {
+        Self {
+            pc: 0,
+            stack: vec![],
+            symbols,
+            instructions,
+        }
+    }
+
     pub fn execute_all(&mut self) {
+        // Don't run code that is invalid
+        if self.instructions[0] == Instruction::CompileError {
+            return;
+        }
         while self.pc < self.instructions.len() {
             match self.execute_next() {
                 Ok(_) => (),
@@ -74,6 +87,7 @@ impl<'a> VM<'a> {
                     Operator::BitXor => (lhs as usize ^ rhs as usize) as f64,
                     Operator::BitLeftShift => ((lhs as usize) << (rhs as usize)) as f64,
                     Operator::BitRightShift => ((lhs as usize) >> (rhs as usize)) as f64,
+                    _ => unimplemented!()
                 };
                 self.stack.push(Value::Number(result));
             },
@@ -117,7 +131,7 @@ impl<'a> VM<'a> {
             Instruction::CallSymbol { name } => {
                 match self.symbols.get(name) {
                     Some(value) => self.stack.push(*value),
-                    None => return Err(VMError::ErrString(format!("The variable {name} does not exist!"))),
+                    None => return Err(VMError::ErrString(format!("The variable `{name}` does not exist!"))),
                 }
             },
 
@@ -131,6 +145,43 @@ impl<'a> VM<'a> {
                         *value = new_value;
                     },
                     None => return Err(VMError::ErrString(format!("Cannot assign a value to variable {name} because it does not exist!"))),
+                }
+                self.stack.push(Value::Null);
+            },
+
+            Instruction::ReloadSymbolOp { name, operator } => {
+                match self.symbols.get_mut(name) {
+                    Some(value) => {
+                        let new_value = match self.stack.pop() {
+                            Some(res) => match res {
+                                Value::Number(number) => number,
+                                Value::Null => return Err(VMError::ErrString(format!("Cannot operate `{name}` on Null type!"))),    
+                            },
+                            None => return Err(VMError::InvalidBytecode), 
+                        };
+                        let old_value = *value;
+                        let mut new_number = match old_value {
+                            Value::Number(number) => number,
+                            Value::Null => return Err(VMError::ErrString(format!("Cannot operate Null type `{name}` on expression!"))),
+                        };
+
+                        match operator {
+                            Operator::PlusEqual => new_number += new_value,
+                            Operator::MinusEqual => new_number -= new_value,
+                            Operator::DivideEqual => new_number /= new_value,
+                            Operator::MultiplyEqual => new_number *= new_value,
+                            Operator::ExponentEqual => new_number = f64::powf(new_number, new_value),
+                            Operator::BitOrEqual => new_number = (new_number as usize | new_value as usize) as f64,
+                            Operator::BitAndEqual => new_number = (new_number as usize & new_value as usize) as f64,
+                            Operator::BitXorEqual => new_number = (new_number as usize ^ new_value as usize) as f64,
+                            Operator::BitLeftShiftEqual => new_number = ((new_number as usize) << new_value as usize) as f64,
+                            Operator::BitRightShiftEqual => new_number = (new_number as usize >> new_value as usize) as f64,
+                            _ => unimplemented!()
+                        }
+
+                        *value = Value::Number(new_number);  
+                    },
+                    None => return Err(VMError::ErrString(format!("Cannot find variable {name} to change its value!"))),
                 }
                 self.stack.push(Value::Null);
             },
@@ -153,8 +204,14 @@ impl<'a> VM<'a> {
                 self.stack.push(Value::Number(function(arguments.as_slice())))
             }
 
+            Instruction::Null => self.stack.push(Value::Null),
+
             _ => unimplemented!(),
         };
         Ok(())
+    }
+
+    pub fn get_symbols(self) -> HashMap<&'a str, Value> {
+        self.symbols
     }
 }
