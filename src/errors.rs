@@ -6,9 +6,13 @@ use crate::utils::Span;
 #[derive(Debug, PartialEq)]
 pub enum Error {
     /// An error that occurs when an octal, binary or hexadecimal number provided is incomplete - `0x` `0b` `0o`
-    TNumberExpected,
+    TNumberExpected { location: usize },
+    /// Invalid octal numbers; Octal numbers with digits 8, or 9
+    TInvalidOctal { span: Span },
+    /// Invalid binary numbers; Binary numbers with digits 2 to 9
+    TInvalidBinary { span: Span },
     /// An error that occurs when an invalid character is encountered
-    TInvalidCharacter,
+    TInvalidCharacter { location: usize },
     /// End of file
     TEOF,
     /// Invalid expression / statement
@@ -33,16 +37,18 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            Self::TNumberExpected | Self::TInvalidCharacter => {
-                format!("Tokenizer Error {self:?}")
-            },
+            Self::TNumberExpected { location } => format!("Expected number @ {location}"),
 
-            Self::TEOF => {
-                format!("End of file reached. No new tokens can be generated")
-            },
+            Self::TInvalidCharacter { location } => format!("Found invalid character @ {location}"),
 
-            Self::PError { message, span: _ } | Self::PInvalidStatement { message, span: _ } => {
-                format!("[PARSE ERROR]: {message}")
+            Self::TInvalidBinary { span } => format!("Invalid Binary number @ {span}"),
+
+            Self::TInvalidOctal { span } => format!("Invalid Octal number @ {span}"),
+
+            Self::TEOF => format!("End of file reached. No new tokens can be generated"),
+
+            Self::PError { message, span } | Self::PInvalidStatement { message, span } => {
+                format!("[PARSE ERROR] ({span}): {message}")
             },
 
             Self::PInternalError { message, span: _ } => {

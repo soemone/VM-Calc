@@ -27,6 +27,13 @@ impl Span {
     pub fn as_range(&self) -> Range<usize> {
         self.start..self.end
     }
+
+    pub fn from_range(range: Range<usize>) -> Self {
+        Self {
+            start: range.start,
+            end: range.end
+        }
+    }
 }
 
 impl Display for Span {

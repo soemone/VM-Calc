@@ -1,0 +1,8 @@
+let a = 190;
+let b = abs(round(sin(to_radians[(a)])));
+b:
+let s = let null = 5:
+a * 9.1111119 - null:
+null:
+let s = 4;
+s:

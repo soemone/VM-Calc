@@ -1,5 +1,4 @@
-use std::str::Chars;
-
+use std::{panic::Location, str::Chars};
 use crate::{errors::Error, tokens::{NumberType, Token, TokenType}, utils::Span};
 
 pub struct Lexer<'a> {
@@ -63,21 +62,39 @@ impl Lexer<'_> {
                         // Octal
                         Some('o') => {
                             self.increment();
-                            self.take_while(Self::check_octal);
+                            let mut has_89 = false;
+                            self.take_while(|c| {
+                                if matches!(c, '8'..='9') {
+                                    has_89 = true;
+                                }
+                                Self::check_number(c)
+                            });
+                            let span = Span::new(start, self.position);
                             if self.position - start == 2 {
-                                return Err(Error::TNumberExpected);
+                                return Err(Error::TNumberExpected { location: self.position });
+                            } else if has_89 {
+                                return Err(Error::TInvalidOctal { span });
                             }
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Octal }, Span::new(start, self.position)))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Octal }, span))
                         },
 
                         // Binary
                         Some('b') => {
                             self.increment();
-                            self.take_while(Self::check_binary);
+                            let mut has_29 = false;
+                            self.take_while(|c| {
+                                if matches!(c, '2'..='9') {
+                                    has_29 = true;
+                                }
+                                Self::check_number(c)
+                            });                          
+                            let span = Span::new(start, self.position);  
                             if self.position - start == 2 {
-                                return Err(Error::TNumberExpected);
+                                return Err(Error::TNumberExpected { location: self.position });
+                            } else if has_29 {
+                                return Err(Error::TInvalidBinary { span });
                             }
-                            Ok(Token::new(TokenType::Number { number_type: NumberType::Binary }, Span::new(start, self.position)))
+                            Ok(Token::new(TokenType::Number { number_type: NumberType::Binary }, span))
                         }
 
                         // Hex
@@ -85,7 +102,7 @@ impl Lexer<'_> {
                             self.increment();
                             self.take_while(Self::check_hex);
                             if self.position - start == 2 {
-                                return Err(Error::TNumberExpected);
+                                return Err(Error::TNumberExpected { location: self.position });
                             }
                             Ok(Token::new(TokenType::Number { number_type: NumberType::Hex }, Span::new(start, self.position)))
                         }
@@ -140,9 +157,7 @@ impl Lexer<'_> {
                         Ok(Token::new(TokenType::Number { number_type: NumberType::Real }, Span::new(start, self.position)))
                     },
 
-                    _ => {
-                        Err(Error::TInvalidCharacter)
-                    }
+                    _ => Err(Error::TInvalidCharacter { location: self.position + 1 })
                 }
             }
 
@@ -159,6 +174,10 @@ impl Lexer<'_> {
             ')' | ']' => token!(TokenType::ClosingBracket),
 
             ';' => token!(TokenType::Semicolon),
+            
+            ':' => token!(TokenType::Colon),
+
+            ',' => token!(TokenType::Comma),
 
             // Operators
             '=' => token!(TokenType::Equal),
@@ -217,7 +236,7 @@ impl Lexer<'_> {
                             _ => variable_token!(0, TokenType::BitLeftShift)
                         }
                     }
-                    _ => Err(Error::TInvalidCharacter)
+                    _ => Err(Error::TInvalidCharacter { location: self.position - 1 })
                 }
             },
 
@@ -231,7 +250,7 @@ impl Lexer<'_> {
                             _ => variable_token!(0, TokenType::BitRightShift)
                         }
                     }
-                    _ => Err(Error::TInvalidCharacter)
+                    _ => Err(Error::TInvalidCharacter { location: self.position - 1 })
                 }
             },
 
@@ -262,8 +281,9 @@ impl Lexer<'_> {
             // Invalid characters
             _ => {
                 println!("Unrecognized character @ {}", start);
+                let location = self.position;
                 self.increment();
-                Err(Error::TInvalidCharacter)
+                Err(Error::TInvalidCharacter { location })
             },
         }
     }
@@ -284,28 +304,6 @@ impl Lexer<'_> {
                 };
             }
     }
-
-    // fn get_next(&mut self) -> Result<char, ()> {
-    //     let character = 
-    //         self
-    //             .chars
-    //             .next()
-    //             .ok_or(())?;
-    //     self.position += character.len_utf8();
-    //     self.current = Some(character);
-    //     Ok(character)
-    // }
-
-    // fn get_next_unchecked(&mut self) -> char {
-    //     let character = 
-    //         self
-    //             .chars
-    //             .next()
-    //             .unwrap();
-    //     self.position += character.len_utf8();
-    //     self.current = Some(character);
-    //     character
-    // }
 
     fn increment(&mut self) {
         let character = 
@@ -339,13 +337,19 @@ impl Lexer<'_> {
         matches!(character, '0'..='9')
     }
 
-    fn check_octal(character: char) -> bool {
-        matches!(character, '0'..='7')
-    }
+    // fn check_octal(character: char) -> Result<bool, Error> {
+    //     if matches!(character, '0'..='7') {
+    //         Ok(true)
+    //     } else if matches!(character, '8'..='9') {
+    //         Err(Error::TInvalidOctal)
+    //     } else {
+    //         Ok(false)
+    //     }
+    // }
     
-    fn check_binary(character: char) -> bool {
-        matches!(character, '0'..='1')
-    }
+    // fn check_binary(character: char) -> bool {
+    //     matches!(character, '0'..='1')
+    // }
 
     fn check_hex(character: char) -> bool {
         matches!(character, '0'..='9' | 'A'..='F' | 'a'..='f')

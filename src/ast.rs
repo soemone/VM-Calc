@@ -1,8 +1,10 @@
 use std::{fmt::Display, rc::Rc};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{tokens::TokenType, utils::Span};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum Operator {
     Plus,
     Minus,
@@ -53,7 +55,7 @@ impl From<TokenType> for Operator {
     } 
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Tree<'a> {
     pub(crate) ast: AST<'a>,
     pub(crate) span: Span,
@@ -73,7 +75,7 @@ impl Display for Tree<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AST<'a> {
     BinaryOp { 
         lhs: Rc<Tree<'a>>,
@@ -111,6 +113,15 @@ pub enum AST<'a> {
         value: Rc<Tree<'a>>,
     },
 
+    Output {
+        value: Rc<Tree<'a>>,
+    },
+
+    FunctionCall {
+        name: &'a str,
+        expressions: Vec<Rc<Tree<'a>>>,
+    },
+
     Invalid,
 }
 
@@ -124,6 +135,18 @@ impl Display for AST<'_> {
             Self::Assign { identifier, value, identifier_span: _} =>  write!(f, "({identifier} = {value})"),
             Self::Declare { identifier, identifier_span: _ } =>  write!(f, "(let {identifier})"),
             Self::DeclareAssign { identifier, value, identifier_span: _ } =>  write!(f, "(let {identifier} = {value})"),
+            Self::Output { value } => write!(f, "*{value}*"),
+            Self::FunctionCall { name, expressions } => {
+                let mut arguments = String::new();
+                for expr in expressions {
+                    if arguments.is_empty() {
+                        arguments = format!("{expr}");
+                    } else {
+                        arguments = format!("{arguments}, {expr}");
+                    }
+                }
+                write!(f, "{name}({})", arguments)
+            }
             Self::Invalid =>  write!(f, "(Invalid)"),
         }
     }

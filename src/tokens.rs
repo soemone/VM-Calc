@@ -28,6 +28,10 @@ pub enum TokenType {
     // Delimiters
     /// Semicolon to seperate statements
     Semicolon,
+    /// This is the alternative to a semicolon, that allows that expression to be shown in the output 
+    Colon,
+    /// Comma, to seperate expressions
+    Comma,
     /// [, (
     OpeningBracket,
     /// ], (
@@ -108,6 +112,8 @@ impl Display for TokenType {
             },
             Self::Identifier => "Identifier",
             Self::Semicolon => ";",
+            Self::Colon => ":",
+            Self::Comma => ",",
             Self::OpeningBracket => "[ | (",
             Self::ClosingBracket => "] | )",
             Self::Multiply => "*",
