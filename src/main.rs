@@ -25,23 +25,27 @@ fn main() -> Result<(), ()> {
 
 fn run() -> Result<(), ()> {
     let args: Vec<String> = std::env::args().collect();
+    let store = || -> Result<(), ()> {
+        let output = 
+        if args.len() >= 4 { &args[3] } 
+        else { 
+            let location = args[2].rfind(".");
+            let mut res = args[2].as_str();
+            res = match location {
+                Some(idx) => &res[0..idx],
+                None => res,
+            };
+            &format!("{}.bin", res) 
+        };
+        ProcessChain::store_bytecode_from_file(&args[2], output)?;
+        Ok(())
+    };
     match args[1].as_str() {
         "-rb" | "--run-binary" => ProcessChain::run_from_bytecode(&args[2])?,
-        "-wb" | "--write-binary" => ProcessChain::store_bytecode_from_file(&args[2], &args[3])?,
+        "-wb" | "--write-binary" => store()?,
         "-rf" | "--run-file" => ProcessChain::run_from_file(&args[2])?,
-        "-rfs" | "--run-store" | "--run-and-store-file" => {
-            let output = 
-                if args.len() >= 4 { &args[3] } 
-                else { 
-                    let location = args[2].rfind(".");
-                    let mut res = args[2].as_str();
-                    res = match location {
-                        Some(idx) => &res[0..idx],
-                        None => res,
-                    };
-                    &format!("{}.bin", res) 
-                };
-            ProcessChain::store_bytecode_from_file(&args[2], output)?;
+        "-rfs" | "--run-store" | "--run-and-store-binary" => {
+            store()?;
             ProcessChain::run_from_file(&args[2])?;
         },
         "-t" | "--text" => ProcessChain::run_from_text(&args[2])?,
@@ -134,6 +138,8 @@ fn repl() {
         if time { println!("Begin compilation"); }
         let instant = Instant::now();
         
+        // Crazy workaround things...
+
         let lexer = lexer::Lexer::new(source).expect("Failed to initialize the lexer!");
         let parser = parser::Parser::new_fn_symbols(lexer, pfn_symbols);
         let mut bytecode_gen = bytecode::Bytecode::new(parser);

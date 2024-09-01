@@ -169,10 +169,6 @@ impl Token {
             span: Span::new(end, end),
         }
     }
-
-    pub fn length(&self) -> usize {
-        self.span.length()
-    }
 }
 
 impl Debug for Token {

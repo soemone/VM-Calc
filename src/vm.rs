@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ast::Operator, functions::get_function, instruction::{self, Instruction, Value}};
+use crate::{ast::Operator, functions::get_function, instruction::{Instruction, Value}};
 
 pub enum VMError {
     BinOnNaN,
@@ -15,7 +15,6 @@ pub struct VM<'a> {
     pub(crate) outputs: Vec<Value>,
     pub(crate) symbols: HashMap<&'a str, Value>,
     pub(crate) function_symbols: HashMap<&'a str, (usize, usize, usize)>
-
 }
 
 impl<'a> VM<'a> {
@@ -201,6 +200,7 @@ impl<'a> VM<'a> {
                 self.stack.push(Value::Null);
             },
 
+            // Really slow?
             Instruction::FunctionCall { name } => {
                 let mut arguments = vec![];
                 match get_function(name) {
@@ -270,7 +270,7 @@ impl<'a> VM<'a> {
                 let fn_body_end = self.pc + end;
                 self.function_symbols.insert(name, (fn_args_address, fn_body_address, fn_body_end));
                 self.pc += end;
-                self.stack.push(Value::Null)
+                self.stack.push(Value::Null);
             }
 
             _ => unimplemented!(),

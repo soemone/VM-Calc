@@ -1,2 +1,0 @@
-let no_args _ = sin(to_radians(90));
-no_args():

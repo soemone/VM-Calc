@@ -39,7 +39,6 @@ impl Lexer<'_> {
             }};
         }
 
-
         let next =
             match self.chars.clone().next() {
                 Some(character) => character,
