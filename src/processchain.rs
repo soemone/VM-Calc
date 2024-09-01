@@ -40,6 +40,7 @@ impl ProcessChain {
         let instructions = bytecode_gen.generate_bytecode();
         let mut vm = VM::new(instructions);
         vm.execute_all();
+        vm.print_output();
         Ok(())
     }
 
@@ -61,6 +62,7 @@ impl ProcessChain {
         };
         let mut vm = VM::new(instructions);
         vm.execute_all();
+        vm.print_output();
         Ok(())
     }
 
@@ -78,6 +80,7 @@ impl ProcessChain {
         let instructions = bytecode_gen.generate_bytecode();
         let mut vm = VM::new(instructions);
         vm.execute_all();
+        vm.print_output();
         Ok(())
     }
 }

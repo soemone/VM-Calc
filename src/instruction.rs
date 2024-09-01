@@ -73,6 +73,20 @@ pub enum Instruction<'a> {
         name: &'a str,
     },
 
+    FunctionDecl {
+        name: &'a str,
+        args: usize,
+        end: usize,
+    },
+
+    ArgumentName {
+        name: &'a str,
+    },
+
+    Delete {
+        name: &'a str,
+    },
+
     /// A null value
     Null,
 

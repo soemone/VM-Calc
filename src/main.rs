@@ -15,6 +15,7 @@ mod tests;
 
 use std::{collections::HashMap, io::Write, time::Instant};
 
+use instruction::Instruction;
 use processchain::ProcessChain;
 
 fn main() -> Result<(), ()> {
@@ -60,6 +61,9 @@ fn repl() {
     println!("Type `.load bytecode <filepath>` | `.load b <filepath>` to load and execute bytecode (timer does not apply to this)");
 
     let mut symbols = HashMap::new();
+    let mut fn_symbols = HashMap::new();
+    let mut pfn_symbols = HashMap::new();
+    let mut fn_bytecode = vec![];
     let mut time = false;
     loop {
         print!(">> ");
@@ -131,19 +135,27 @@ fn repl() {
         let instant = Instant::now();
         
         let lexer = lexer::Lexer::new(source).expect("Failed to initialize the lexer!");
-        let parser = parser::Parser::new(lexer);
+        let parser = parser::Parser::new_fn_symbols(lexer, pfn_symbols);
         let mut bytecode_gen = bytecode::Bytecode::new(parser);
-        let instructions = bytecode_gen.generate_bytecode();
+        let (instructions, new_fn_bytecode) = bytecode_gen.generate_fn_bytecode(fn_bytecode.clone());
+
+        fn_bytecode = new_fn_bytecode;
+        fn_bytecode.retain(|instruction| !matches!(instruction, Instruction::Output));
+
+        pfn_symbols = bytecode_gen.get_fn_symbols();
 
         if time { println!("Finished compilation in {:?}", instant.elapsed()); }
         
-        let mut vm = vm::VM::new_with_symbols(instructions, symbols);
+        let mut vm = vm::VM::new_with_symbols(instructions, symbols, fn_symbols);
         
         if time { println!("Begin run"); }
         let instant = Instant::now();
         
         vm.execute_all();
-        symbols = vm.get_symbols();
+
+        vm.print_output();
+
+        (symbols, fn_symbols) = vm.get_symbols();
         
         if time { println!("Finished run in {:?}", instant.elapsed()); }
     }

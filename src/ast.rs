@@ -154,6 +154,16 @@ pub enum AST<'a> {
         expressions: Vec<Rc<Tree<'a>>>,
     },
 
+    FunctionDecl {
+        name: &'a str,
+        arguments: Vec<&'a str>,
+        body: Rc<Tree<'a>>,
+    },
+
+    Delete {
+        name: &'a str,
+    },
+
     Null,
 
     Invalid,
@@ -163,15 +173,19 @@ impl Display for AST<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Null => write!(f, "{}Null{}", "{", "}"),
-            Self::BinaryOp { lhs, rhs, op } =>  write!(f, "({lhs} {op} {rhs})"),
-            Self::UnaryOp { rhs, op } =>  write!(f, "({op}{rhs})"),
-            Self::Number { value } =>  write!(f, "{value}"),
-            Self::Identifier { name } =>  write!(f, "{name}"),
-            Self::Assign { identifier, value, identifier_span: _} =>  write!(f, "({identifier} = {value})"),
-            Self::AssignOp { operator, identifier, value, identifier_span: _} =>  write!(f, "({identifier} {operator}= {value})"),
+            Self::BinaryOp { lhs, rhs, op } => write!(f, "({lhs} {op} {rhs})"),
+            Self::UnaryOp { rhs, op } => write!(f, "({op}{rhs})"),
+            Self::Number { value } => write!(f, "{value}"),
+            Self::Identifier { name } => write!(f, "{name}"),
+            Self::Assign { identifier, value, identifier_span: _} => write!(f, "({identifier} = {value})"),
+            Self::AssignOp { operator, identifier, value, identifier_span: _} => write!(f, "({identifier} {operator}= {value})"),
             Self::Declare { identifier, identifier_span: _ } =>  write!(f, "(let {identifier})"),
-            Self::DeclareAssign { identifier, value, identifier_span: _ } =>  write!(f, "(let {identifier} = {value})"),
+            Self::DeclareAssign { identifier, value, identifier_span: _ } => write!(f, "(let {identifier} = {value})"),
             Self::Output { value } => write!(f, "*{value}*"),
+            Self::FunctionDecl { name, arguments, body } => {
+                write!(f, "let {name} {} = {body}", arguments.join(" "))
+            }
+            Self::Delete { name } => write!(f, "(delete {name})"),
             Self::FunctionCall { name, expressions } => {
                 let mut arguments = String::new();
                 for expr in expressions {

@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, rc::Rc};
+use std::{borrow::Borrow, collections::HashMap, rc::Rc};
 use crate::{ast::{Tree, AST}, errors::Error, instruction::{Instruction, Value}, parser::Parser};
 
 pub struct Bytecode<'a> {
@@ -34,6 +34,42 @@ impl<'a> Bytecode<'a> {
         }
         complete_bytecode
     }
+
+    pub fn generate_fn_bytecode(&mut self, old_fn_bytecode: Vec<Instruction<'a>>) -> (Vec<Instruction<'a>>, Vec<Instruction<'a>>) {
+        let mut complete_bytecode = old_fn_bytecode.clone();
+        let mut function_bytecode = old_fn_bytecode;
+        loop {
+            match self.parser.next_expression() {
+                Ok(tree) => {
+                    let mut value = Self::traverse(&tree);
+                    if let Instruction::FunctionDecl { .. } = value[0] {
+                        function_bytecode.append(&mut (value.clone()))
+                    };
+                    complete_bytecode.append(&mut value);
+                }
+                Err(error) => {
+                    self.error = true;
+                    complete_bytecode.clear();
+                    complete_bytecode.push(Instruction::CompileError);
+                    function_bytecode.clear();
+                    if error != Error::NoResult {
+                        println!("{error}");
+                    }
+                }
+            }
+
+            if self.parser.eof {
+                break;
+            }
+        }
+        (complete_bytecode, function_bytecode)
+    }
+
+
+    pub fn get_fn_symbols(self) -> HashMap<&'a str, usize> {
+        self.parser.get_fn_symbols()
+    }
+
 
     fn traverse(tree: &Rc<Tree<'a>>) -> Vec<Instruction<'a>> {
         match tree.ast.borrow() {
@@ -94,6 +130,17 @@ impl<'a> Bytecode<'a> {
                 instructions.push(Instruction::FunctionCall { name });
                 instructions
             }
+
+            AST::FunctionDecl { name, arguments, body } => {
+                let mut instructions = vec![Instruction::FunctionDecl { name, args: arguments.len(), end: 0 }];
+                instructions.extend(arguments.iter().map(|name| Instruction::ArgumentName { name }));
+                instructions.extend(Self::traverse(body));
+                let end = instructions.len() - 1;
+                instructions[0] = Instruction::FunctionDecl { name, args: arguments.len(), end };
+                instructions
+            }
+
+            AST::Delete { name } => vec![Instruction::Delete { name }],
 
             AST::Null => vec![Instruction::Null],
 

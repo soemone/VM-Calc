@@ -1,12 +1,12 @@
 
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 use crate::{ast::{Operator, Tree, AST}, errors::Error, functions::get_function, lexer::Lexer, tokens::{NumberType, Token, TokenType}, utils::Span};
 
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
     token: Token,
     pub(crate) eof: bool,
-    empty: bool,
+    function_symbols: HashMap<&'a str, usize>,
 }
 macro_rules! create_fn {
     ($self: ident, $below_fn: ident, $token_type: pat) => {{
@@ -42,8 +42,21 @@ impl<'a> Parser<'a> {
             token: Token::null(),
             lexer,
             eof: false,
-            empty: false,
+            function_symbols: HashMap::new(),
         }
+    }
+
+    pub fn new_fn_symbols(lexer: Lexer<'a>, function_symbols: HashMap<&'a str, usize>) -> Self {
+        Self {
+            token: Token::null(),
+            lexer,
+            eof: false,
+            function_symbols,
+        }
+    }
+
+    pub fn get_fn_symbols(self) -> HashMap<&'a str, usize> {
+        self.function_symbols
     }
 
     // Used only for tests
@@ -225,6 +238,49 @@ impl<'a> Parser<'a> {
                             ))
                         }
 
+                        // A function declaration
+                        TokenType::Identifier => {
+                            if let Some(..) = self.function_symbols.get(name) {
+                                return Err(Error::PError { 
+                                        message: format!("The function `{name}` already exists!"), 
+                                        span: identifier_span,
+                                    });
+                            } else if let Ok(..) = get_function(name) {
+                                return Err(Error::PError { 
+                                    message: format!("The function `{name}` is a built in function and cannot be overwritten!"), 
+                                    span: identifier_span,
+                                });
+                            }
+                            let mut arguments = vec![];
+                            while self.token.token_type == TokenType::Identifier {
+                                let name = &self.lexer.source[self.token.span.as_range()];
+                                arguments.push(name);
+                                self.increment()?;
+                            }
+
+                            if arguments.len() == 1 && arguments[0] == "_" {
+                                arguments = vec![];
+                            }
+
+                            if self.token.token_type == TokenType::Equal {
+                                self.increment()?;
+                                let body = self.final_stage()?;
+                                self.function_symbols.insert(name, arguments.len());
+                                return Ok(Rc::new(
+                                    Tree::new(
+                                        AST::FunctionDecl { name, arguments, body },
+                                        Span::new(start, self.token.span.end)
+                                    )
+                                ));
+                            } else {
+                                return Err(Error::PError 
+                                    { 
+                                        message: format!("Expected an expression for the function `{name}`"), 
+                                        span: identifier_span,
+                                    });
+                            }
+                        },
+
                         // Just declare a variable
                         _ => {
                             let end = self.token.span.end;
@@ -236,7 +292,31 @@ impl<'a> Parser<'a> {
                             ))
                         }
                     }
-                } else if name == "Null" {
+                } 
+                else if name == "delete" {
+                    // self.increment()?;
+                    let value = &self.lexer.source[self.token.span.as_range()];
+                    let token_span = self.token.span;
+                    match &self.token.token_type {
+                        TokenType::Identifier => {
+                            self.increment()?;
+                            self.function_symbols.remove(value);
+                            Ok(Rc::new(
+                                Tree::new(
+                                    AST::Delete { name: value },
+                                    Span::new(start, self.token.span.end)
+                                )
+                            ))
+                        },
+
+                        tt => 
+                            Err(Error::PError { 
+                                    message: format!("Expected an identifer / function to delete but found `{tt}`"), 
+                                    span: token_span 
+                                })
+                    }
+                }
+                else if name == "Null" {
                     Ok(Rc::new(
                         Tree::new(
                             AST::Null,
@@ -299,10 +379,22 @@ impl<'a> Parser<'a> {
                                     }
                                 },
     
-                                Err(()) => return Err(Error::PError { 
-                                    message: format!("The function `{name}` does not exist!"), 
-                                    span: Span::new(start, end),
-                                })
+                                Err(()) => {
+                                    if !self.function_symbols.contains_key(name) {
+                                        return Err(Error::PError { 
+                                            message: format!("The function `{name}` does not exist!"), 
+                                            span: Span::new(start, end),
+                                        });
+                                    } else {
+                                        let arg_len = self.function_symbols.get(name).unwrap();
+                                        if expressions.len() != *arg_len {
+                                            return Err(Error::PError { 
+                                                message: format!("The function `{name}` expected {arg_len} argument(s) but {} argument(s) were found!", expressions.len()), 
+                                                span: Span::new(expr_start, end - 1),
+                                            });
+                                        }
+                                    }
+                                }
                             };
     
                             return Ok(Rc::new(

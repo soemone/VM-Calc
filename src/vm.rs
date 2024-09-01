@@ -12,7 +12,10 @@ pub struct VM<'a> {
     instructions: Vec<Instruction<'a>>,
     stack: Vec<Value>,
     pc: usize,
-    pub(crate) symbols: HashMap<&'a str, Value>
+    pub(crate) outputs: Vec<Value>,
+    pub(crate) symbols: HashMap<&'a str, Value>,
+    pub(crate) function_symbols: HashMap<&'a str, (usize, usize, usize)>
+
 }
 
 impl<'a> VM<'a> {
@@ -20,17 +23,29 @@ impl<'a> VM<'a> {
         Self {
             pc: 0,
             stack: vec![],
+            outputs: vec![],
             symbols: HashMap::new(),
+            function_symbols: HashMap::new(),
             instructions,
         }
     }
 
-    pub fn new_with_symbols(instructions: Vec<Instruction<'a>>, symbols: HashMap<&'a str, Value>) -> Self {
+    pub fn new_with_symbols(instructions: Vec<Instruction<'a>>, symbols: HashMap<&'a str, Value>, function_symbols: HashMap<&'a str, (usize, usize, usize)>) -> Self {
         Self {
             pc: 0,
             stack: vec![],
+            outputs: vec![],
             symbols,
+            function_symbols,
             instructions,
+        }
+    }
+
+    pub fn print_output(&self) {
+        if self.outputs.len() > 0 {
+            println!("Results: {}", self.outputs.iter().map(|value| format!("{value}")).collect::<Vec<_>>().join(", "));
+        } else {
+            println!("No results for this expression");
         }
     }
 
@@ -111,7 +126,7 @@ impl<'a> VM<'a> {
                     Some(res) => res,
                     None => return Err(VMError::InvalidBytecode), 
                 };
-                println!("Result: {}", res)
+                self.outputs.push(res)
             },
 
             Instruction::LoadSymbolName { name } => {
@@ -188,30 +203,82 @@ impl<'a> VM<'a> {
 
             Instruction::FunctionCall { name } => {
                 let mut arguments = vec![];
-                let (length, function) = get_function(name).unwrap();
-                for _ in 0..length {
-                    let arg = match self.stack.pop() {
-                        Some(value) => {
-                            match value {
-                                Value::Number(num) => num,
-                                _ => return Err(VMError::ErrString(format!("Functions that do not deal with values other than numbers are not yet supported!"))),
+                match get_function(name) {
+                    Ok((length, function)) => {
+                        for _ in 0..length {
+                            let arg = match self.stack.pop() {
+                                Some(value) => {
+                                    match value {
+                                        Value::Number(num) => num,
+                                        _ => return Err(VMError::ErrString(format!("Functions that do not deal with values other than numbers are not yet supported!"))),
+                                    }
+                                },
+                                None => return Err(VMError::ErrString(format!("Failed to get arguments to function {name} (Likely an internal error)!"))),
+                            };
+                            arguments.push(arg);
+                        }
+                        self.stack.push(Value::Number(function(arguments.as_slice())))        
+                    },
+
+                    // Look for function in function symbols
+                    Err(..) => {
+                        if let Some((fn_args_address, fn_body_address, fn_body_end)) = self.function_symbols.get(name) {
+                            let orig_pc = self.pc;
+                            let orig_symbols = self.symbols.clone();
+                            self.pc = *fn_args_address;
+                            let args_len = fn_body_address - fn_args_address;
+                            for i in 0..args_len {
+                                let arg = &self.instructions[self.pc + i];
+                                match arg {
+                                    Instruction::ArgumentName { name } => {
+                                        let value = match self.stack.pop() {
+                                            Some(value) => value,
+                                            None => return Err(VMError::InvalidBytecode),
+                                        };
+                                        self.symbols.insert(name, value);
+                                    }
+
+                                    _ => return Err(VMError::InvalidBytecode),
+                                }
                             }
-                        },
-                        None => return Err(VMError::ErrString(format!("Failed to get arguments to function {name} (Likely an internal error)!"))),
-                    };
-                    arguments.push(arg);
-                }
-                self.stack.push(Value::Number(function(arguments.as_slice())))
+                            self.pc = *fn_body_address;
+                            for _ in 0..(fn_body_end - fn_body_address) {
+                                self.execute_next()?;
+                            }
+                            self.pc = orig_pc;
+                            self.symbols = orig_symbols;
+                        } else {
+                            return Err(VMError::ErrString(format!("The function `{name}` does not exist!")));
+                        }
+                    }
+                };
             }
 
             Instruction::Null => self.stack.push(Value::Null),
+
+            Instruction::Delete { name } => {
+                if let Some(..) = self.symbols.get(name) { self.symbols.remove(name); }
+                else if let Ok(..) = get_function(name) {
+                    return Err(VMError::ErrString(format!("Cannot delete builtin function `{name}`")));
+                } else if let Some(..) = self.function_symbols.get(name) { self.function_symbols.remove(name); };
+                self.stack.push(Value::Null);
+            }
+
+            Instruction::FunctionDecl { name, args, end } => {
+                let fn_body_address = self.pc + args;
+                let fn_args_address = self.pc;
+                let fn_body_end = self.pc + end;
+                self.function_symbols.insert(name, (fn_args_address, fn_body_address, fn_body_end));
+                self.pc += end;
+                self.stack.push(Value::Null)
+            }
 
             _ => unimplemented!(),
         };
         Ok(())
     }
 
-    pub fn get_symbols(self) -> HashMap<&'a str, Value> {
-        self.symbols
+    pub fn get_symbols(self) -> (HashMap<&'a str, Value>, HashMap<&'a str, (usize, usize, usize)>) {
+        (self.symbols, self.function_symbols)
     }
 }
