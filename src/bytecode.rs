@@ -3,12 +3,11 @@ use crate::{ast::{Tree, AST}, errors::Error, instruction::{Instruction, Value}, 
 
 pub struct Bytecode<'a> {
     parser: Parser<'a>,
-    error: bool
 }
 
 impl<'a> Bytecode<'a> {
     pub fn new(parser: Parser<'a>) -> Self {
-        Self { parser, error: false }
+        Self { parser }
     }
 
     pub fn generate_bytecode(&mut self) -> Vec<Instruction<'a>> {
@@ -19,9 +18,8 @@ impl<'a> Bytecode<'a> {
                     complete_bytecode.append(&mut Self::traverse(&tree));
                 }
                 Err(error) => {
-                    self.error = true;
                     complete_bytecode.clear();
-                    complete_bytecode.push(Instruction::CompileError);
+                    complete_bytecode.push(Instruction::CompileError);    
                     if error != Error::NoResult {
                         println!("{error}");
                     }
@@ -48,10 +46,9 @@ impl<'a> Bytecode<'a> {
                     complete_bytecode.append(&mut value);
                 }
                 Err(error) => {
-                    self.error = true;
                     complete_bytecode.clear();
                     complete_bytecode.push(Instruction::CompileError);
-                    function_bytecode.clear();
+                    function_bytecode.clear();    
                     if error != Error::NoResult {
                         println!("{error}");
                     }
@@ -62,6 +59,7 @@ impl<'a> Bytecode<'a> {
                 break;
             }
         }
+
         (complete_bytecode, function_bytecode)
     }
 

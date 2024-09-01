@@ -49,8 +49,8 @@ impl<'a> VM<'a> {
     }
 
     pub fn execute_all(&mut self) {
-        // Don't run code that is invalid
-        if self.instructions[0] == Instruction::CompileError {
+        // Don't run code that is empty or invalid
+        if self.instructions.len() == 0 || self.instructions[0] == Instruction::CompileError {
             return;
         }
         while self.pc < self.instructions.len() {
@@ -72,9 +72,7 @@ impl<'a> VM<'a> {
     pub fn execute_next(&mut self) -> Result<(), VMError> {
         self.pc += 1;
         match &self.instructions[self.pc - 1] {
-            Instruction::Load { value } => {
-                self.stack.push(*value)
-            },
+            Instruction::Load { value } => self.stack.push(value.clone()),
 
             Instruction::Binary { operator } => {
                 let rhs = match self.stack.pop().unwrap() {
@@ -144,7 +142,7 @@ impl<'a> VM<'a> {
 
             Instruction::CallSymbol { name } => {
                 match self.symbols.get(name) {
-                    Some(value) => self.stack.push(*value),
+                    Some(value) => self.stack.push(value.clone()),
                     None => return Err(VMError::ErrString(format!("The variable `{name}` does not exist!"))),
                 }
             },
@@ -173,9 +171,8 @@ impl<'a> VM<'a> {
                             },
                             None => return Err(VMError::InvalidBytecode), 
                         };
-                        let old_value = *value;
-                        let mut new_number = match old_value {
-                            Value::Number(number) => number,
+                        let mut new_number = match value {
+                            Value::Number(number) => *number,
                             Value::Null => return Err(VMError::ErrString(format!("Cannot operate Null type `{name}` on expression!"))),
                         };
 
@@ -227,7 +224,7 @@ impl<'a> VM<'a> {
                             let orig_symbols = self.symbols.clone();
                             self.pc = *fn_args_address;
                             let args_len = fn_body_address - fn_args_address;
-                            for i in 0..args_len {
+                            for i in (0..args_len).rev() {
                                 let arg = &self.instructions[self.pc + i];
                                 match arg {
                                     Instruction::ArgumentName { name } => {

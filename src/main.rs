@@ -68,6 +68,7 @@ fn repl() {
     let mut fn_symbols = HashMap::new();
     let mut pfn_symbols = HashMap::new();
     let mut fn_bytecode = vec![];
+    let mut functions = vec![];
     let mut time = false;
     loop {
         print!(">> ");
@@ -84,7 +85,7 @@ fn repl() {
         };
         buffer = buffer.trim().to_string();
         if buffer.is_empty() {
-            println!("No expression was provied");
+            println!("No expression was provided");
             continue;
         }
 
@@ -145,8 +146,27 @@ fn repl() {
         let mut bytecode_gen = bytecode::Bytecode::new(parser);
         let (instructions, new_fn_bytecode) = bytecode_gen.generate_fn_bytecode(fn_bytecode.clone());
 
-        fn_bytecode = new_fn_bytecode;
-        fn_bytecode.retain(|instruction| !matches!(instruction, Instruction::Output));
+        let mut i = 0;
+        while i < new_fn_bytecode.len() {
+            let instr = new_fn_bytecode[i].clone();
+            match instr {
+                Instruction::FunctionDecl { name, end, .. } => {
+                    if !functions.contains(&name) {
+                        fn_bytecode.push(instr);
+                        functions.push(name);
+                    } else {
+                        i += end;
+                    }
+                }
+
+                Instruction::Output => (),
+
+                _ => { fn_bytecode.push(instr); }
+            }
+            i += 1;
+        }
+
+        // fn_bytecode.retain(|instruction: &Instruction<'_>| !matches!(instruction, Instruction::Output));
 
         pfn_symbols = bytecode_gen.get_fn_symbols();
 

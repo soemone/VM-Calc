@@ -6,7 +6,7 @@ use crate::ast::Operator;
 
 
 // There most definitely is a better, more efficient way to represent the bytecode, but I cannot think of it
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Number(f64),
     Null,
