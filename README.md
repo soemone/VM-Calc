@@ -1,27 +1,27 @@
 ### A simple "VM" based calculater thing
 #### Features:
-    - Number systems: Decimal, Binary, Octal, Hexadecimal
-        - Note that output is only in the decimal number system
-    - Basic math operations: Add (+), Subtract (-), Divide (/), Multiply (*), Exponent (**)
-    - Binary operations: AND (&), OR (|), XOR (^), Left Shift (<<), Right Shift (>>)
-        - Note that these operations will truncate the floating point of both sides before proceeding
-    - Variables: Null values or floating point values (64 bit precision)
-    - Assignment + Operations on variables, ie. Add + Assign (+=), Subtract + Assign (-=), so on and so forth. This applies to all operators previously discussed
-    - Null values cannot have any operation performed on them
-    - Basic function support: each function allows only a single expression to compute
-        - Note that functions can access variables outside, that have been declared *after* the function has been declared. This could cause confusion, but I felt it was fine to allow it (And because I don't think I know how to prevent it :P)
-        - Also note that you cannot ovveride built in functions, nor your own functions, but you *can* have a variable that has the same name as a built in function or the same name as a function you declared
-    - Deletion of variables and functions
-        - Note that if you have a variable and a function of the same name (what's the point?), this always deletes the variable first, then the function (you'd need to call it twice to delete both)
-        - Also, you are not allowed to delete built in functions. Again, why would you want to? 
-    - REPL: Kinda buggy but works, no need for semicolons or colons, but you can use them
-    - Command line arguments:
-        - `repl` starts the repl
-        - `-rf` | `--run-file` reads a file and executes it
-        - `-t` | `--text` runs the text provided to the command line
-        - `-rb` | `--run-binary` runs the binary file provided by the next argument
-        - `-wb` | `--write-binary` reads a file provided by the next argument and generates the bytecode to stores it as binary file. This file is in the same location with the extension `.bin` if another argument is not provided, otherwise, it stores it to the path provided by that other argument.
-        - `-rfs` | `--run-store` | `--run-and-store-binary` runs the file provided by the next argument, and stores the bytecode produced in a new file. This file is in the same location with the extension `.bin` if another argument is not provided, otherwise, it stores it to the path provided by that other argument.
+- Number systems: Decimal, Binary, Octal, Hexadecimal
+    - Note that output is only in the decimal number system
+- Basic math operations: Add (`+`), Subtract (`-`), Divide (`/`), Multiply (`*`), Exponent (`**`)
+- Binary operations: AND (`&`), OR (`|`), XOR (`^`), Left Shift (`<<`), Right Shift (`>>`)
+    - Note that these operations will truncate the floating point of both sides before proceeding
+- Variables: Null values or floating point values (64 bit precision)
+- Assignment + Operations on variables, ie. Add + Assign (`+=`), Subtract + Assign (`-=`), so on and so forth. This applies to all operators previously discussed
+- Null values cannot have any operation performed on them
+- Basic function support: each function allows only a single expression to compute
+    - Note that functions can access variables outside, that have been declared *after* the function has been declared. This could cause confusion, but I felt it was fine to allow it (And because I don't think I know how to prevent it :P)
+    - Also note that you cannot ovveride built in functions, nor your own functions, but you *can* have a variable that has the same name as a built in function or the same name as a function you declared
+- Deletion of variables and functions
+    - Note that if you have a variable and a function of the same name (what's the point?), this always deletes the variable first, then the function (you'd need to call it twice to delete both)
+    - Also, you are not allowed to delete built in functions. Again, why would you want to? 
+- REPL: Kinda buggy but works, no need for semicolons or colons, but you can use them
+- Command line arguments:
+    - `repl` starts the repl
+    - `-rf` | `--run-file` reads a file and executes it
+    - `-t` | `--text` runs the text provided to the command line
+    - `-rb` | `--run-binary` runs the binary file provided by the next argument
+    - `-wb` | `--write-binary` reads a file provided by the next argument and generates the bytecode to stores it as binary file. This file is in the same location with the extension `.bin` if another argument is not provided, otherwise, it stores it to the path provided by that other argument.
+    - `-rfs` | `--run-store` | `--run-and-store-binary` runs the file provided by the next argument, and stores the bytecode produced in a new file. This file is in the same location with the extension `.bin` if another argument is not provided, otherwise, it stores it to the path provided by that other argument.
 
 Here is a bit of an example of the syntax and the working:
 Try to run it
@@ -106,4 +106,5 @@ let d = 10;
 access_outside(): // 15
 ```
 Pretty simple, I'd say
+
 Some things are still buggy, and some syntax does not allow you to do what you'd expect, but this is pretty much it.
