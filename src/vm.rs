@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ast::Operator, functions::get_function, instruction::{Instruction, Value}};
+use crate::{ast::Operator, functions::get_function, instruction::{Function, Instruction, Value}};
 
 pub enum VMError {
     BinOnNaN,
@@ -13,8 +13,8 @@ pub struct VM<'a> {
     stack: Vec<Value>,
     pc: usize,
     pub(crate) outputs: Vec<Value>,
-    pub(crate) symbols: HashMap<&'a str, Value>,
-    pub(crate) function_symbols: HashMap<&'a str, (usize, usize, usize)>
+    symbols: HashMap<&'a str, Value>,
+    functions: HashMap<&'a str, Function>,
 }
 
 impl<'a> VM<'a> {
@@ -24,18 +24,18 @@ impl<'a> VM<'a> {
             stack: vec![],
             outputs: vec![],
             symbols: HashMap::new(),
-            function_symbols: HashMap::new(),
+            functions: HashMap::new(),
             instructions,
         }
     }
 
-    pub fn new_with_symbols(instructions: Vec<Instruction<'a>>, symbols: HashMap<&'a str, Value>, function_symbols: HashMap<&'a str, (usize, usize, usize)>) -> Self {
+    pub fn new_with_symbols(instructions: Vec<Instruction<'a>>, symbols: HashMap<&'a str, Value>, functions: HashMap<&'a str, Function>) -> Self {
         Self {
             pc: 0,
             stack: vec![],
             outputs: vec![],
             symbols,
-            function_symbols,
+            functions,
             instructions,
         }
     }
@@ -53,6 +53,7 @@ impl<'a> VM<'a> {
         if self.instructions.len() == 0 || self.instructions[0] == Instruction::CompileError {
             return;
         }
+
         while self.pc < self.instructions.len() {
             match self.execute_next() {
                 Ok(_) => (),
@@ -60,9 +61,9 @@ impl<'a> VM<'a> {
                     // Stop the vm since a runtime error has occured.
                     self.pc = self.instructions.len();
                     match error {
-                        VMError::BinOnNaN => println!("[Runtime Error]: Binary operation cannot be performed on a value that is not a number"),
-                        VMError::InvalidBytecode => println!("[Runtime Error]: The bytecode provided to the VM appears to be invalid, or containing a bug that causes the program to unexpectedly crash"),
-                        VMError::ErrString(string) => println!("[Runtime Error]: {string}"),
+                        VMError::BinOnNaN => println!("[RUNTIME ERROR]: Binary operation cannot be performed on a value that is not a number"),
+                        VMError::InvalidBytecode => println!("[RUNTIME ERROR]: The bytecode provided to the VM appears to be invalid, or containing a bug that causes the program to unexpectedly crash"),
+                        VMError::ErrString(string) => println!("[RUNTIME ERROR]: {string}"),
                     }
                 }
             };
@@ -187,6 +188,7 @@ impl<'a> VM<'a> {
                             Operator::BitXorEqual => new_number = (new_number as usize ^ new_value as usize) as f64,
                             Operator::BitLeftShiftEqual => new_number = ((new_number as usize) << new_value as usize) as f64,
                             Operator::BitRightShiftEqual => new_number = (new_number as usize >> new_value as usize) as f64,
+
                             _ => unimplemented!()
                         }
 
@@ -219,10 +221,14 @@ impl<'a> VM<'a> {
 
                     // Look for function in function symbols
                     Err(..) => {
-                        if let Some((fn_args_address, fn_body_address, fn_body_end)) = self.function_symbols.get(name) {
+                        if let Some(function) = self.functions.get(name) {
+                            let fn_args_address = function.instructions.start - function.arguments;
+                            let fn_body_address = function.instructions.start;
+                            let fn_body_end = function.instructions.end;
+
                             let orig_pc = self.pc;
                             let orig_symbols = self.symbols.clone();
-                            self.pc = *fn_args_address;
+                            self.pc = fn_args_address;
                             let args_len = fn_body_address - fn_args_address;
                             for i in (0..args_len).rev() {
                                 let arg = &self.instructions[self.pc + i];
@@ -238,12 +244,16 @@ impl<'a> VM<'a> {
                                     _ => return Err(VMError::InvalidBytecode),
                                 }
                             }
-                            self.pc = *fn_body_address;
+                            
+                            self.pc = fn_body_address;
+                            
                             for _ in 0..(fn_body_end - fn_body_address) {
                                 self.execute_next()?;
                             }
+
                             self.pc = orig_pc;
                             self.symbols = orig_symbols;
+
                         } else {
                             return Err(VMError::ErrString(format!("The function `{name}` does not exist!")));
                         }
@@ -254,19 +264,21 @@ impl<'a> VM<'a> {
             Instruction::Null => self.stack.push(Value::Null),
 
             Instruction::Delete { name } => {
-                if let Some(..) = self.symbols.get(name) { self.symbols.remove(name); }
-                else if let Ok(..) = get_function(name) {
+                // Remove everything related to the name
+                self.symbols.remove(name);
+                self.functions.remove(name);
+
+                if let Ok(..) = get_function(name) {
                     return Err(VMError::ErrString(format!("Cannot delete builtin function `{name}`")));
-                } else if let Some(..) = self.function_symbols.get(name) { self.function_symbols.remove(name); };
+                }
                 self.stack.push(Value::Null);
             }
 
             Instruction::FunctionDecl { name, args, end } => {
                 let fn_body_address = self.pc + args;
-                let fn_args_address = self.pc;
                 let fn_body_end = self.pc + end;
-                self.function_symbols.insert(name, (fn_args_address, fn_body_address, fn_body_end));
                 self.pc += end;
+                self.functions.insert(name, Function::new(*args, fn_body_address..fn_body_end));
                 self.stack.push(Value::Null);
             }
 
@@ -275,7 +287,7 @@ impl<'a> VM<'a> {
         Ok(())
     }
 
-    pub fn get_symbols(self) -> (HashMap<&'a str, Value>, HashMap<&'a str, (usize, usize, usize)>) {
-        (self.symbols, self.function_symbols)
+    pub fn get_symbols(self) -> (HashMap<&'a str, Value>, HashMap<&'a str, Function>) {
+        (self.symbols, self.functions)
     }
 }

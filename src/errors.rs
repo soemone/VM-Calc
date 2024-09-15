@@ -21,7 +21,7 @@ pub enum Error {
         span: Span,
     },
 
-    /// Any parser error
+    /// Any parser error (Also includes one error generated during bytecode generation)
     PError {
         message: String,
         span: Span,
@@ -57,9 +57,7 @@ impl Display for Error {
                 format!("[PARSE ERROR] {span}: {message}")
             },
 
-            Self::PInternalError { message, span: _ } => {
-                format!("[INTERNAL PARSE ERROR]: {message}")
-            },
+            Self::PInternalError { message, span: _ } => format!("[INTERNAL PARSE ERROR]: {message}"),
         };
         write!(f, "{string}")
     }

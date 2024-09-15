@@ -67,8 +67,11 @@ fn repl() {
     let mut symbols = HashMap::new();
     let mut fn_symbols = HashMap::new();
     let mut pfn_symbols = HashMap::new();
+    let mut p_symbols = HashMap::new();
+
     let mut fn_bytecode = vec![];
-    let mut functions = vec![];
+    let mut functions = HashMap::new();
+    
     let mut time = false;
     loop {
         print!(">> ");
@@ -113,10 +116,33 @@ fn repl() {
                 None => println!("Expected file path to load file!"),
             };
             continue;
+        } else if [".show functions", ".show fns", ".disp fns", ".display functions"].contains(&buffer.as_str()) {
+            println!("Functions in this session: ");
+            println!("BUILTIN FUNCTIONS: ");
+            for (function, (args, _)) in functions::FUNCTIONS {
+                let repeated = "*, ".repeat(args);
+                println!("{function}({})", if args > 0 { &repeated[..(args * 3 - 2)] } else { "" });
+            }
+            println!("USER FUNCTIONS: ");
+            for (key, (args, shadow)) in &pfn_symbols {
+                let repeated = "*, ".repeat(*args);
+                println!("{key}({}){}", 
+                                    if *args > 0 { &repeated[..(*args * 3 - 2)] } else { "" }, 
+                                    if *shadow { " [SHADOWED - UNREACHABLE]" } else { "" }
+                        );
+            }
+            if pfn_symbols.is_empty() {
+                println!("None");
+            }
+            continue;
         } else if [".show variables", ".show var", ".disp var", ".display variables"].contains(&buffer.as_str()) {
             println!("Variables in this session: ");
             for (key, value) in &symbols {
-                println!("{key} = {value}");
+                if let Some(true) = p_symbols.get(key) {
+                    println!("{key} = {value} [SHADOWED - UNREACHABLE]");
+                } else {
+                    println!("{key} = {value}");
+                }
             }
             if symbols.is_empty() {
                 println!("None");
@@ -128,9 +154,10 @@ fn repl() {
             continue;
         }
 
-        if !buffer.ends_with(";") && !buffer.ends_with(":") {
-            buffer.push(':');
-        }
+        // A better workaround than this has been done internally. The code is probably worse though
+        // if !buffer.ends_with(";") && !buffer.ends_with(":") {
+        //     buffer.push(':');
+        // }
         
         buffer = buffer.replace(";", ":");
         
@@ -142,20 +169,28 @@ fn repl() {
         // Crazy workaround things...
 
         let lexer = lexer::Lexer::new(source).expect("Failed to initialize the lexer!");
-        let parser = parser::Parser::new_fn_symbols(lexer, pfn_symbols);
+        let parser = parser::Parser::new_fn_symbols(lexer, pfn_symbols, p_symbols);
         let mut bytecode_gen = bytecode::Bytecode::new(parser);
         let (instructions, new_fn_bytecode) = bytecode_gen.generate_fn_bytecode(fn_bytecode.clone());
 
+        (pfn_symbols, p_symbols) = bytecode_gen.get_symbols();
+
+        // TODO: Prevent recursive functions from being registered in the parser as valid functions (Very minor issue - gets caught at runtime)
         let mut i = 0;
         while i < new_fn_bytecode.len() {
             let instr = new_fn_bytecode[i].clone();
             match instr {
-                Instruction::FunctionDecl { name, end, .. } => {
-                    if !functions.contains(&name) {
+                Instruction::FunctionDecl { name, .. } => {
+                    if !functions.contains_key(name) {
                         fn_bytecode.push(instr);
-                        functions.push(name);
+                        functions.insert(name, fn_bytecode.len() - 1);
                     } else {
-                        i += end;
+                        // Delete old function to replace with new
+                        let start = *functions.get(name).unwrap();
+                        if let Some(Instruction::FunctionDecl { end, .. }) = &fn_bytecode.get(start) {
+                            fn_bytecode.drain(start..=(start + end));
+                        }
+                        fn_bytecode.push(instr);
                     }
                 }
 
@@ -166,9 +201,7 @@ fn repl() {
             i += 1;
         }
 
-        // fn_bytecode.retain(|instruction: &Instruction<'_>| !matches!(instruction, Instruction::Output));
-
-        pfn_symbols = bytecode_gen.get_fn_symbols();
+        // println!("{instructions:?}");
 
         if time { println!("Finished compilation in {:?}", instant.elapsed()); }
         

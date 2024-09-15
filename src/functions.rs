@@ -9,7 +9,7 @@ macro_rules! decl_fn {
 decl_fn!(sin, cos, tan, abs, acos, cosh, acosh, asin, atan, asinh, atanh, cbrt, ceil, floor, log10, log2, ln, round, sqrt, to_radians, to_degrees, );
 
 
-const FUNCTIONS: [(&str, (usize, fn(&[f64]) -> f64)); 22] = [
+pub const FUNCTIONS: [(&str, (usize, fn(&[f64]) -> f64)); 22] = [
     ("cos", (1, cos)),
     ("sin", (1, sin)),
     ("tan", (1, tan)),

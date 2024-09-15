@@ -15,7 +15,14 @@ impl<'a> Bytecode<'a> {
         loop {
             match self.parser.next_expression() {
                 Ok(tree) => {
-                    complete_bytecode.append(&mut Self::traverse(&tree));
+                    let mut instructions = Self::traverse(&tree);
+
+                    if instructions.get(0) == Some(&Instruction::CompileError) {
+                        complete_bytecode.clear();
+                        complete_bytecode.push(Instruction::CompileError);
+                    } else {
+                        complete_bytecode.append(&mut instructions);
+                    }
                 }
                 Err(error) => {
                     complete_bytecode.clear();
@@ -37,13 +44,20 @@ impl<'a> Bytecode<'a> {
         let mut complete_bytecode = old_fn_bytecode.clone();
         let mut function_bytecode = old_fn_bytecode;
         loop {
-            match self.parser.next_expression() {
+            // This function is only used by the repl
+            match self.parser.next_expression_repl() {
                 Ok(tree) => {
-                    let mut value = Self::traverse(&tree);
-                    if let Instruction::FunctionDecl { .. } = value[0] {
-                        function_bytecode.append(&mut (value.clone()))
-                    };
-                    complete_bytecode.append(&mut value);
+                    let mut instructions = Self::traverse(&tree);
+                    if instructions.get(0) == Some(&Instruction::CompileError) {
+                        complete_bytecode.clear();
+                        complete_bytecode.push(Instruction::CompileError);
+                        function_bytecode.clear();
+                    } else {
+                        if let Instruction::FunctionDecl { .. } = instructions[0] {
+                            function_bytecode.append(&mut (instructions.clone()));
+                        }
+                        complete_bytecode.append(&mut instructions);
+                    }
                 }
                 Err(error) => {
                     complete_bytecode.clear();
@@ -63,11 +77,9 @@ impl<'a> Bytecode<'a> {
         (complete_bytecode, function_bytecode)
     }
 
-
-    pub fn get_fn_symbols(self) -> HashMap<&'a str, usize> {
-        self.parser.get_fn_symbols()
+    pub fn get_symbols(self) -> (HashMap<&'a str, (usize, bool)>, HashMap<&'a str, bool>) {
+        (self.parser.function_symbols, self.parser.symbols)
     }
-
 
     fn traverse(tree: &Rc<Tree<'a>>) -> Vec<Instruction<'a>> {
         match tree.ast.borrow() {
@@ -131,10 +143,25 @@ impl<'a> Bytecode<'a> {
 
             AST::FunctionDecl { name, arguments, body } => {
                 let mut instructions = vec![Instruction::FunctionDecl { name, args: arguments.len(), end: 0 }];
-                instructions.extend(arguments.iter().map(|name| Instruction::ArgumentName { name }));
+
+                instructions.extend(arguments.iter().map(|name: &&str| Instruction::ArgumentName { name }));
                 instructions.extend(Self::traverse(body));
                 let end = instructions.len() - 1;
                 instructions[0] = Instruction::FunctionDecl { name, args: arguments.len(), end };
+
+                // Check for recursion. Recursion makes no sense with single statement functions
+                for instruction in &instructions {
+                    if let Instruction::FunctionCall { name: called_name } = instruction {
+                        if name == called_name {
+                            let span = body.span;
+                            let error = Error::PError { message: format!("Function `{name}` cannot call itself recursively!"), span };
+                            println!("{error}");
+                            instructions[0] = Instruction::CompileError;
+                            break;
+                        }
+                    }
+                }
+
                 instructions
             }
 
@@ -142,7 +169,8 @@ impl<'a> Bytecode<'a> {
 
             AST::Null => vec![Instruction::Null],
 
-            _ => vec![Instruction::Illegal],
+            // Unreachable
+            // _ => vec![Instruction::Illegal],
         }
     }
     

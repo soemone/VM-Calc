@@ -20,10 +20,6 @@ impl Span {
         }
     }
 
-    pub fn length(&self) -> usize {
-        self.end - self.start
-    }
-
     pub fn as_range(&self) -> Range<usize> {
         self.start..self.end
     }

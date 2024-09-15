@@ -2,7 +2,6 @@ use std::fmt::{Debug, Display};
 
 use crate::utils::Span;
 
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum NumberType {
     /// 0b1001

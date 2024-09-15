@@ -6,7 +6,8 @@ pub struct Parser<'a> {
     lexer: Lexer<'a>,
     token: Token,
     pub(crate) eof: bool,
-    function_symbols: HashMap<&'a str, usize>,
+    pub(crate) function_symbols: HashMap<&'a str, (usize, bool)>,
+    pub(crate) symbols: HashMap<&'a str, bool>,
 }
 macro_rules! create_fn {
     ($self: ident, $below_fn: ident, $token_type: pat) => {{
@@ -16,7 +17,7 @@ macro_rules! create_fn {
             $self.increment()?;
             if $self.eof {
                 return Err(Error::PError { 
-                    message: format!("Expected an expression after the `{}` operator, but found nothing. @ {}", $self.token.token_type, &$self.token.span), 
+                    message: format!("Expected an expression after the `{}` operator, but found nothing. @ {}", operator, &$self.token.span), 
                     span: $self.token.span
                 });
             } else {
@@ -43,20 +44,18 @@ impl<'a> Parser<'a> {
             lexer,
             eof: false,
             function_symbols: HashMap::new(),
+            symbols: HashMap::new(),
         }
     }
 
-    pub fn new_fn_symbols(lexer: Lexer<'a>, function_symbols: HashMap<&'a str, usize>) -> Self {
+    pub fn new_fn_symbols(lexer: Lexer<'a>, function_symbols: HashMap<&'a str, (usize, bool)>, symbols: HashMap<&'a str, bool>) -> Self {
         Self {
             token: Token::null(),
             lexer,
             eof: false,
             function_symbols,
+            symbols,
         }
-    }
-
-    pub fn get_fn_symbols(self) -> HashMap<&'a str, usize> {
-        self.function_symbols
     }
 
     // Used only for tests
@@ -64,7 +63,7 @@ impl<'a> Parser<'a> {
         self.increment().ok();
         let mut expressions = vec![];
         while !self.eof {
-            match self.expression() {
+            match self.expression(false) {
                 Ok(ast) => {
                     expressions.push(Ok(ast))
                 },
@@ -80,7 +79,14 @@ impl<'a> Parser<'a> {
         if self.token.token_type == TokenType::Null {
             self.increment()?;
         }
-        self.expression()
+        self.expression(false)
+    }
+
+    pub fn next_expression_repl(&mut self) -> Result<Rc<Tree<'a>>, Error> {
+        if self.token.token_type == TokenType::Null {
+            self.increment()?;
+        }
+        self.expression(true)
     }
 
     pub fn increment(&mut self) -> Result<(), Error>{
@@ -101,23 +107,37 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expression(&mut self) -> Result<Rc<Tree<'a>>, Error> {
+    fn expression(&mut self, repl: bool) -> Result<Rc<Tree<'a>>, Error> {
         let mut result = self.final_stage()?;
         match &self.token.token_type {
-            TokenType::Semicolon => self.increment()?,
+            TokenType::Semicolon => {
+                self.increment()?;
+                // Show output, for all terminators in the repl
+                if repl {
+                    let span = result.span;
+                    result = Rc::new(Tree::new(AST::Output { value: result }, span));    
+                }
+            },
+
             TokenType::Colon => {
                 self.increment()?;
                 let span = result.span;
                 result = Rc::new(Tree::new(AST::Output { value: result }, span));
             }
-            _ => {
+
+            _ if !repl => {
                 let span = Span::new(self.token.span.start, self.token.span.start);
                 return 
                     Err(Error::PError {
-                        message: format!("Expected semicolon (`;`) or colon (`:`) after an expression! Found `{}`", &self.lexer.source[self.token.span.as_range()]), 
+                        message: format!("Expected a semicolon (`;`) or colon (`:`) after an expression! Found `{}`", &self.lexer.source[self.token.span.as_range()]), 
                         span,
                     });
             },
+
+            _ => {
+                let span = result.span;
+                result = Rc::new(Tree::new(AST::Output { value: result }, span));
+            }
         }
         Ok(result)
     }
@@ -162,7 +182,7 @@ impl<'a> Parser<'a> {
                 self.increment()?;
                 if self.eof {
                     return Err(Error::PError { 
-                        message: format!("Expected an expression after the `{}` operator, but found nothing. @ {}", &self.token.token_type, &self.token.span), 
+                        message: format!("Expected an expression after the `{}` operator, but found nothing. @ {}", operator, &self.token.span), 
                         span: self.token.span
                     });
                 } else {
@@ -230,6 +250,19 @@ impl<'a> Parser<'a> {
                             self.increment()?;
                             let result = self.final_stage()?;
                             let end = result.span.end;
+
+                            // Shadow a function with the same name if it exists
+                            if let Some((_, shadow)) = self.function_symbols.get_mut(name) {
+                                *shadow = true;
+                            }
+
+                            // Unshadow an existing variable name or insert it if it does not
+                            if let Some(shadow) = self.symbols.get_mut(name) {
+                                *shadow = false;
+                            } else {
+                                self.symbols.insert(name, false);
+                            }
+
                             Ok(Rc::new(
                                 Tree::new(
                                     AST::DeclareAssign { identifier: name, identifier_span, value: result },
@@ -240,17 +273,14 @@ impl<'a> Parser<'a> {
 
                         // A function declaration
                         TokenType::Identifier => {
-                            if let Some(..) = self.function_symbols.get(name) {
-                                return Err(Error::PError { 
-                                        message: format!("The function `{name}` already exists!"), 
-                                        span: identifier_span,
-                                    });
-                            } else if let Ok(..) = get_function(name) {
+                            // Overwriting is allowed
+                            if let Ok(..) = get_function(name) {
                                 return Err(Error::PError { 
                                     message: format!("The function `{name}` is a built in function and cannot be overwritten!"), 
                                     span: identifier_span,
                                 });
                             }
+
                             let mut arguments = vec![];
                             while self.token.token_type == TokenType::Identifier {
                                 let name = &self.lexer.source[self.token.span.as_range()];
@@ -264,8 +294,33 @@ impl<'a> Parser<'a> {
 
                             if self.token.token_type == TokenType::Equal {
                                 self.increment()?;
-                                let body = self.final_stage()?;
-                                self.function_symbols.insert(name, arguments.len());
+                                let old_function_symbols = self.function_symbols.clone();
+                                let old_symbols = self.symbols.clone();
+                                // Unshadow an existing function, and update it's data
+                                if let Some((args_len, shadow)) = self.function_symbols.get_mut(name) {
+                                    *shadow = false;
+                                    *args_len = arguments.len();
+                                } else {
+                                    self.function_symbols.insert(name, (arguments.len(), false));
+                                }
+
+                                // Check if a variable with the same name exists. If it does, it has been shadowed
+                                if let Some(shadow) = self.symbols.get_mut(name) {
+                                    *shadow = true;
+                                }
+
+                                let body = 
+                                    match self.final_stage() {
+                                        Ok(value) => value,
+                                        error => {
+                                            // Revert back to the previous state if the function is of invalid grammar
+                                            self.function_symbols = old_function_symbols;
+                                            self.symbols = old_symbols;
+                                            return error;
+                                        }, 
+                                    };
+
+
                                 return Ok(Rc::new(
                                     Tree::new(
                                         AST::FunctionDecl { name, arguments, body },
@@ -300,7 +355,24 @@ impl<'a> Parser<'a> {
                     match &self.token.token_type {
                         TokenType::Identifier => {
                             self.increment()?;
-                            self.function_symbols.remove(value);
+                            let mut removed = false;
+                            // Remove variables and functions - shadowed or not
+                            if self.symbols.contains_key(value) {
+                                self.symbols.remove(value);
+                                removed = true;
+                            } 
+                            if self.function_symbols.contains_key(value) {
+                                self.function_symbols.remove(value);
+                                removed = true;
+                            }
+
+                            if !removed {
+                                return Err(Error::PError { 
+                                    message: format!("A function or variable with the name `{value}` was not found!"), 
+                                    span: token_span 
+                                })
+                            }
+
                             Ok(Rc::new(
                                 Tree::new(
                                     AST::Delete { name: value },
@@ -331,6 +403,15 @@ impl<'a> Parser<'a> {
                         self.increment()?;
                         let result = self.final_stage()?;
                         let end = result.span.end;
+
+                        // Don't allow access to an overshadowed variable
+                        if let Some(true) = self.symbols.get(name) {
+                            return Err(Error::PError { 
+                                message: format!("The variable `{name}` has been shadowed by the function of the same name, `{name}`!"), 
+                                span: Span::new(start, ident_end),
+                            })
+                        }
+
                         return Ok(Rc::new(
                             Tree::new(
                                 AST::AssignOp { operator, identifier: name, identifier_span: Span::new(start, ident_end), value: result },
@@ -345,6 +426,15 @@ impl<'a> Parser<'a> {
                             self.increment()?;
                             let result = self.final_stage()?;
                             let end = result.span.end;
+
+                            // Don't allow access to an overshadowed variable
+                            if let Some(true) = self.symbols.get(name) {
+                                return Err(Error::PError { 
+                                    message: format!("The variable `{name}` has been shadowed by the function of the same name, `{name}`!"), 
+                                    span: Span::new(start, ident_end),
+                                })
+                            }
+
                             return Ok(Rc::new(
                                 Tree::new(
                                     AST::Assign { identifier: name, identifier_span: Span::new(start, ident_end), value: result },
@@ -369,6 +459,14 @@ impl<'a> Parser<'a> {
                             self.increment()?;
                             let end = self.token.span.end - 1;
     
+                            // Don't allow access to an overshadowed function
+                            if let Some((_, true)) = self.function_symbols.get(name) {
+                                return Err(Error::PError { 
+                                    message: format!("The function `{name}` has been shadowed by the variable of the same name, `{name}`!"), 
+                                    span: Span::new(start, ident_end),
+                                })
+                            }
+
                             match get_function(name) {
                                 Ok((arg_len, _)) => {
                                     if arg_len != expressions.len() {
@@ -381,12 +479,25 @@ impl<'a> Parser<'a> {
     
                                 Err(()) => {
                                     if !self.function_symbols.contains_key(name) {
+                                        // Multiply using parentheses?
+                                        // if expressions.len() == 1 {
+                                        //     return Ok(Rc::new(
+                                        //         Tree::new(
+                                        //             AST::BinaryOp { lhs: 
+                                        //                 Rc::new(Tree::new(AST::Identifier { name }, Span::new(start, ident_end))), 
+                                        //                 rhs: expressions[0].clone(),
+                                        //                 op: Operator::Multiply
+                                        //             },
+                                        //             Span::new(start, end)
+                                        //         )
+                                        //     ));
+                                        // }
                                         return Err(Error::PError { 
                                             message: format!("The function `{name}` does not exist!"), 
                                             span: Span::new(start, end),
                                         });
                                     } else {
-                                        let arg_len = self.function_symbols.get(name).unwrap();
+                                        let (arg_len, _) = self.function_symbols.get(name).unwrap();
                                         if expressions.len() != *arg_len {
                                             return Err(Error::PError { 
                                                 message: format!("The function `{name}` expected {arg_len} argument(s) but {} argument(s) were found!", expressions.len()), 
@@ -418,13 +529,19 @@ impl<'a> Parser<'a> {
 
                         _ => ()
                     };
+                    // Don't allow access to an overshadowed variable
+                    if let Some(true) = self.symbols.get(name) {
+                        return Err(Error::PError { 
+                            message: format!("The variable `{name}` has been shadowed by the function of the same name, `{name}`!"), 
+                            span: Span::new(start, ident_end),
+                        })
+                    }
 
-                    let end = self.token.span.end;
                     // An identifier
                     Ok(Rc::new(
                         Tree::new(
                             AST::Identifier { name },
-                            Span::new(start, end)
+                            Span::new(start, ident_end)
                         )
                     ))
                 }

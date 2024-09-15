@@ -1,9 +1,8 @@
-use std::fmt::Display;
+use std::{ops::Range, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 
 use crate::ast::Operator;
-
 
 // There most definitely is a better, more efficient way to represent the bytecode, but I cannot think of it
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +95,18 @@ pub enum Instruction<'a> {
     /// A flag to not run the VM when a compiler error has occured
     CompileError,
 
-    /// An illegal instruction
-    Illegal,
+    // Not needed
+    // /// An illegal instruction
+    // Illegal,
+}
+
+pub struct Function {
+    pub(crate) arguments: usize,
+    pub(crate) instructions: Range<usize>,
+}
+
+impl Function {
+    pub fn new(arguments: usize, instructions: Range<usize>) -> Self {
+        Self { arguments, instructions }
+    }
 }

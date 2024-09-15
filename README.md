@@ -1,4 +1,4 @@
-### A simple "VM" based calculater thing
+### A simple "VM" based calculator thing
 #### Features:
 - Number systems: Decimal, Binary, Octal, Hexadecimal
     - Note that output is only in the decimal number system
@@ -66,7 +66,7 @@ variable_name **= 1.5;
 variable_name += 1.5;
 variable_name -= 1.5;
 
-variable_name: // 1.837
+variable_name: // 1.837...
 
 // Bitwise operations as well:
 // The same condition as above applies to this as well
@@ -93,7 +93,7 @@ let no_args _ = sin(to_radians(90)); // Just a `_` implies no arguments
 no_args(): // 1
 
 let args _ a = a / _; // But `_` can be used as an argument when more than one argument is expected
-args(5, 2): // 2.5
+args(5, 2): // 0.4
 // The number of arguments are fixed and are not dynamic
 
 // Also, you can do this!
@@ -104,6 +104,9 @@ let d = 10;
 
 // Nope, this does not produce an error
 access_outside(): // 15
+
+// Just to be clear, recursion is *not* allowed. It does not make sense with a single expression function anyway.
+// let sum a b = sum(a, b + 1); // Produces an error
 ```
 Pretty simple, I'd say
 

@@ -1,8 +1,6 @@
-use crate::{bytecode::Bytecode, instruction, lexer::Lexer, parser::Parser, vm::VM};
+use crate::{bytecode::Bytecode, lexer::Lexer, parser::Parser, vm::VM};
 
-pub struct ProcessChain {
-
-}
+pub struct ProcessChain { }
 
 impl ProcessChain {
     pub fn store_bytecode_from_file(path_in: &str, path_out: &str) -> Result<(), ()> {
