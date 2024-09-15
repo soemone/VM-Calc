@@ -10,9 +10,9 @@
 - Null values cannot have any operation performed on them
 - Basic function support: each function allows only a single expression to compute
     - Note that functions can access variables outside, that have been declared *after* the function has been declared. This could cause confusion, but I felt it was fine to allow it (And because I don't think I know how to prevent it :P)
-    - Also note that you cannot ovveride built in functions, nor your own functions, but you *can* have a variable that has the same name as a built in function or the same name as a function you declared
+    - Also note that you cannot override built in functions, but you can your own functions. You *can* also have a variable that has the same name as a built in function or the same name as a function you declared.
 - Deletion of variables and functions
-    - Note that if you have a variable and a function of the same name (what's the point?), this always deletes the variable first, then the function (you'd need to call it twice to delete both)
+    - Note that if you have a variable and a function of the same name (what's the point?), this will delete both the function and variable
     - Also, you are not allowed to delete built in functions. Again, why would you want to? 
 - REPL: Kinda buggy but works, no need for semicolons or colons, but you can use them
 - Command line arguments:
