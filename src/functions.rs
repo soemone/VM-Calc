@@ -1,3 +1,4 @@
+
 macro_rules! decl_fn {
     ($($name: ident,)*) => {
         $(fn $name(values: &[f64]) -> f64 {

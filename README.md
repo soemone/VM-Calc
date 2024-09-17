@@ -2,6 +2,8 @@
 #### Features:
 - Number systems: Decimal, Binary, Octal, Hexadecimal
     - Note that output is only in the decimal number system
+- Strings with basic escape sequences parsed
+    - Strings can be conactenated with the `+` operator
 - Basic math operations: Add (`+`), Subtract (`-`), Divide (`/`), Multiply (`*`), Exponent (`**`)
 - Binary operations: AND (`&`), OR (`|`), XOR (`^`), Left Shift (`<<`), Right Shift (`>>`)
     - Note that these operations will truncate the floating point of both sides before proceeding
@@ -9,7 +11,6 @@
 - Assignment + Operations on variables, ie. Add + Assign (`+=`), Subtract + Assign (`-=`), so on and so forth. This applies to all operators previously discussed
 - Null values cannot have any operation performed on them
 - Basic function support: each function allows only a single expression to compute
-    - Note that functions can access variables outside, that have been declared *after* the function has been declared. This could cause confusion, but I felt it was fine to allow it (And because I don't think I know how to prevent it :P)
     - Also note that you cannot override built in functions, but you can your own functions. You *can* also have a variable that has the same name as a built in function or the same name as a function you declared.
 - Deletion of variables and functions
     - Note that if you have a variable and a function of the same name (what's the point?), this will delete both the function and variable
@@ -30,6 +31,9 @@ Try to run it
 
 // : at the end to display output
 // ; at the end to compute the result but not display it
+// use the `print(...)` function to display outputs as well
+
+print(1, 2, 3, 4); // 1 2 3 4
 
 // Basic math
 5 + 7:   // 12
@@ -87,6 +91,13 @@ delete variable_name;
 
 // variable_name: // Will throw an error. Uncomment to try
 
+// Strings
+"Hello": // Hello
+// String concatenation
+"Hello" + " " + "World": // Hello World
+// Printing achieves the same effect
+print("Hello", "World"); // Hello World
+
 // Functions
 
 let no_args _ = sin(to_radians(90)); // Just a `_` implies no arguments
@@ -96,17 +107,23 @@ let args _ a = a / _; // But `_` can be used as an argument when more than one a
 args(5, 2): // 0.4
 // The number of arguments are fixed and are not dynamic
 
-// Also, you can do this!
-let access_outside _ = c + d;
+// You cannot access variables declared after the function
+// let access_outside _ = c + d;
 
 let c = 5;
 let d = 10;
 
-// Nope, this does not produce an error
-access_outside(): // 15
+// This does not work
+// access_outside():
 
 // Just to be clear, recursion is *not* allowed. It does not make sense with a single expression function anyway.
 // let sum a b = sum(a, b + 1); // Produces an error
+
+// An interesting workaround I found for recursion (which I fixed now)
+// let a _ = 1; // Something arbitrary
+// let b _ = a();
+// Now, redefine a such that recursion is produced
+// let a _ = b(); // Doing this will produce an error
 ```
 Pretty simple, I'd say
 

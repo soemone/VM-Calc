@@ -273,10 +273,15 @@ impl<'a> Parser<'a> {
 
                         // A function declaration
                         TokenType::Identifier => {
-                            // Overwriting is allowed
+
                             if let Ok(..) = get_function(name) {
                                 return Err(Error::PError { 
                                     message: format!("The function `{name}` is a built in function and cannot be overwritten!"), 
+                                    span: identifier_span,
+                                });
+                            } else if name == "print" {
+                                return Err(Error::PError { 
+                                    message: format!("The function `print` is a built in function and cannot be overwritten!"), 
                                     span: identifier_span,
                                 });
                             }
@@ -309,6 +314,11 @@ impl<'a> Parser<'a> {
                                     *shadow = true;
                                 }
 
+                                // Create symbols for arguments
+                                for symbol in &arguments {
+                                    self.symbols.insert(symbol, false);
+                                }
+                                                                
                                 let body = 
                                     match self.final_stage() {
                                         Ok(value) => value,
@@ -317,9 +327,14 @@ impl<'a> Parser<'a> {
                                             self.function_symbols = old_function_symbols;
                                             self.symbols = old_symbols;
                                             return error;
-                                        }, 
+                                        },
                                     };
 
+                                self.symbols = old_symbols;
+                                // Restore the shadow state of the variable once the body has been parsed
+                                if let Some(shadow) = self.symbols.get_mut(name) {
+                                    *shadow = true;
+                                }
 
                                 return Ok(Rc::new(
                                     Tree::new(
@@ -339,6 +354,19 @@ impl<'a> Parser<'a> {
                         // Just declare a variable
                         _ => {
                             let end = self.token.span.end;
+                            
+                            // Shadow a function with the same name if it exists
+                            if let Some((_, shadow)) = self.function_symbols.get_mut(name) {
+                                *shadow = true;
+                            }
+
+                            // Unshadow an existing variable name or insert it if it does not
+                            if let Some(shadow) = self.symbols.get_mut(name) {
+                                *shadow = false;
+                            } else {
+                                self.symbols.insert(name, false);
+                            }
+
                             Ok(Rc::new(
                                 Tree::new(
                                     AST::Declare { identifier: name, identifier_span },
@@ -448,16 +476,30 @@ impl<'a> Parser<'a> {
                             self.increment()?;
                             let expr_start = self.token.span.start;
                             let mut expressions = vec![];
+                           
                             while self.token.token_type != TokenType::ClosingBracket {
                                 expressions.push(self.final_stage()?);
+
                                 if self.token.token_type == TokenType::ClosingBracket {
                                     break;
                                 }
+
                                 self.expect(TokenType::Comma)?;
                                 self.increment()?;
                             }
+                            
                             self.increment()?;
                             let end = self.token.span.end - 1;
+
+                            // Print is a special function that can accept any number of arguments
+                            if name == "print" {
+                                return Ok(Rc::new(
+                                    Tree::new(
+                                        AST::Print { expressions },
+                                        Span::new(start, end)
+                                    )
+                                ));
+                            }
     
                             // Don't allow access to an overshadowed function
                             if let Some((_, true)) = self.function_symbols.get(name) {
@@ -479,19 +521,6 @@ impl<'a> Parser<'a> {
     
                                 Err(()) => {
                                     if !self.function_symbols.contains_key(name) {
-                                        // Multiply using parentheses?
-                                        // if expressions.len() == 1 {
-                                        //     return Ok(Rc::new(
-                                        //         Tree::new(
-                                        //             AST::BinaryOp { lhs: 
-                                        //                 Rc::new(Tree::new(AST::Identifier { name }, Span::new(start, ident_end))), 
-                                        //                 rhs: expressions[0].clone(),
-                                        //                 op: Operator::Multiply
-                                        //             },
-                                        //             Span::new(start, end)
-                                        //         )
-                                        //     ));
-                                        // }
                                         return Err(Error::PError { 
                                             message: format!("The function `{name}` does not exist!"), 
                                             span: Span::new(start, end),
@@ -529,6 +558,15 @@ impl<'a> Parser<'a> {
 
                         _ => ()
                     };
+
+                    // Check if the variable exists
+                    if let None = self.symbols.get(name) {
+                        return Err(Error::PError { 
+                            message: format!("The variable `{name}` does not exist!"), 
+                            span: Span::new(start, ident_end),
+                        })
+                    }
+
                     // Don't allow access to an overshadowed variable
                     if let Some(true) = self.symbols.get(name) {
                         return Err(Error::PError { 
@@ -565,6 +603,37 @@ impl<'a> Parser<'a> {
                 Ok(result)
             }
 
+            TokenType::String => {
+                self.increment()?;
+                let unprocessed_contents = &self.lexer.source[(span.start + 1)..(span.end - 1)];
+                let mut contents = String::new();
+                let mut check_next = false;
+                // Very basic string processing
+                for character in unprocessed_contents.chars() {
+                    if character == '\\' {
+                        check_next = true;
+                        continue;
+                    }
+
+                    if check_next {
+                        check_next = false;
+                        match character {
+                            '\\' => contents.push(character),
+                            'n' => contents.push('\n'),
+                            'r' => contents.push('\r'),
+                            't' => contents.push('\t'),
+                            '0' => contents.push('\0'),
+                            '\'' => contents.push('\''),
+                            '"' => contents.push('"'),
+                            c => return Err(Error::PError { message: format!("Unknown character escape sequence \\{c}"), span })
+                        }
+                        continue;
+                    }
+                    contents.push(character);
+                }
+                Ok(Rc::new(Tree::new(AST::String { contents }, span)))
+            }
+
             TokenType::EOF => Err(Error::NoResult),
 
             token => {
@@ -582,7 +651,7 @@ impl<'a> Parser<'a> {
     fn expect(&mut self, token_type: TokenType) -> Result<(), Error> {
         if self.token.token_type != token_type {
             return Err(Error::PError { 
-                message: format!("Expected a token of type: {token_type} but found token of type: {} @ {}", self.token.token_type, self.token.span), 
+                message: format!("Expected a token of type: `{token_type}` but found token of type: {} @ {}", self.token.token_type, self.token.span), 
                 span: self.token.span,
             })
         }

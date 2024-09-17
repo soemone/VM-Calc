@@ -5,7 +5,6 @@
 mod tests {
     use std::{ops::Range, rc::Rc};
     use crate::{ast::{Tree, AST}, errors::Error, lexer::Lexer, parser::Parser, utils::Span};
-    use super::*;
 
     fn generate_tree(input: &str) -> Vec<Result<Rc<Tree<'_>>, Error>> {
         let lexer = Lexer::new(input).unwrap();
@@ -15,6 +14,14 @@ mod tests {
 
     fn ok_tree(ast: AST, range: Range<usize>) -> Result<Rc<Tree>, Error> {
         Ok(Rc::new(Tree::new(ast, Span::from_range(range))))
+    }
+
+    fn generate_and_test(input: &str, tests: &[&str]) {
+        let tree = generate_tree(input);
+        
+        for i in 0..tests.len() {
+            assert_eq!(format!("{}", tree[i].clone().unwrap()), tests[i].to_owned())
+        }   
     }
 
     fn expect_error<T, A>(value: &Result<T, A>) {
@@ -48,5 +55,74 @@ mod tests {
         assert_eq!(tree[1], ok_tree(AST::Number { value: 5.0 }, 4..7));
         // Same reason as above
         expect_error(&tree[2]);
+    }
+
+    #[test]
+    fn operators() {
+        let tests = [
+            "(-1)",
+            "(+1)",
+            "(1 + 1)",
+            "(1 - 1)",
+            "(1 * 1)",
+            "(1 / 1)",
+            "(1 ** 1)",
+            "(1 & 1)",
+            "(1 | 1)",
+            "(1 >> 1)",
+            "(1 << 1)",
+            "(1 ^ 1)",
+        ];
+        generate_and_test("-1;+1;1+1;1-1;1*1;1/1;1**1;1&1;1|1;1>>1;1<<1;1^1;", &tests)
+    }
+
+    #[test]
+    fn variables() {
+        let tests = [
+            "(let a)",
+            "(let a = 5)",
+            "(let a = {Null})",
+            "*(let a = \"str\")*",
+        ];
+        generate_and_test("let a;let a = 5;let a = Null;let a = \"str\":", &tests)
+    }
+
+    #[test]
+    fn variable_operators() {
+        let tests = [
+            "(let a)",
+            "(a = 5)",
+            "(a += 7)",
+            "(a -= 7)",
+            "(a *= 7)",
+            "(a /= 7)",
+            "(a **= 7)",
+            "(a &= 7)",
+            "(a |= 7)",
+            "(a ^= 7)",
+            "(a <<= 7)",
+            "(a >>= 7)",
+        ];
+        generate_and_test("let a;a=5;a+=7;a-=7;a*=7;a/=7;a**=7;a&=7;a|=7;a^=7;a<<=7;a>>=7;", &tests)
+    }
+
+    
+    #[test]
+    fn functions() {
+        let tests = [
+            "(let a a b c = ((a + b) + c))",
+            "a(1, 2, 3)",
+            "<PRINT>(1, 2, 3)",
+        ];
+        generate_and_test("let a a b c=a+b+c;a(1,2,3);print(1,2,3);", &tests)
+    }
+        
+    #[test]
+    fn delete() {
+        let tests = [
+            "(let a)",
+            "(delete a)",
+        ];
+        generate_and_test("let a;delete a;", &tests)
     }
 }

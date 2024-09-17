@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
+
+use serde::de::value;
 
 use crate::{ast::Operator, functions::get_function, instruction::{Function, Instruction, Value}};
 
@@ -76,33 +78,54 @@ impl<'a> VM<'a> {
             Instruction::Load { value } => self.stack.push(value.clone()),
 
             Instruction::Binary { operator } => {
-                let rhs = match self.stack.pop().unwrap() {
-                    Value::Number(number) => number,
-                    _ => return Err(VMError::BinOnNaN),
-                };
-                let lhs = match self.stack.pop().unwrap() {
-                    Value::Number(number) => number,
-                    _ => return Err(VMError::BinOnNaN),
-                };
-                let result = match operator {
-                    Operator::Plus => lhs + rhs,
-                    Operator::Minus => lhs - rhs,
-                    Operator::Multiply => lhs * rhs,
-                    Operator::Divide => {
-                        if rhs == 0.0 {
-                            return Err(VMError::ErrString(format!("Cannot divide a number by zero!")));
-                        }
-                        lhs / rhs
-                    },
-                    Operator::Exponent => lhs.powf(rhs),
-                    Operator::BitAnd => (lhs as usize & rhs as usize) as f64,
-                    Operator::BitOr => (lhs as usize | rhs as usize) as f64,
-                    Operator::BitXor => (lhs as usize ^ rhs as usize) as f64,
-                    Operator::BitLeftShift => ((lhs as usize) << (rhs as usize)) as f64,
-                    Operator::BitRightShift => ((lhs as usize) >> (rhs as usize)) as f64,
-                    _ => unimplemented!()
-                };
-                self.stack.push(Value::Number(result));
+                let rhs = self.stack.pop().unwrap();
+                let lhs = self.stack.pop().unwrap();
+                match (lhs, rhs) {
+                    (Value::Number(a), Value::Number(b)) => {
+                        let res = match operator {
+                            Operator::Plus => a + b,
+                            Operator::Minus => a - b,
+                            Operator::Multiply => a * b,
+                            Operator::Divide => {
+                                if b == 0.0 {
+                                    return Err(VMError::ErrString(format!("Cannot divide a number by zero!")));
+                                }
+                                a / b
+                            },
+                            Operator::Exponent => a.powf(b),
+                            Operator::BitAnd => (a as usize & b as usize) as f64,
+                            Operator::BitOr => (a as usize | b as usize) as f64,
+                            Operator::BitXor => (a as usize ^ b as usize) as f64,
+                            Operator::BitLeftShift => ((a as usize) << (b as usize)) as f64,
+                            Operator::BitRightShift => ((a as usize) >> (b as usize)) as f64,
+                            _ => unimplemented!()
+                        };
+                        self.stack.push(Value::Number(res));
+                    }
+
+                    (Value::String(a), Value::String(b)) => {
+                        let res = match operator {
+                            Operator::Plus => {
+                                let mut base = a;
+                                base.push_str(&b);
+                                base
+                            },
+                            _ => return Err(VMError::ErrString(format!("Cannot perform binary operation `{operator}` on strings!")))
+                        };
+                        self.stack.push(Value::String(res));
+                    }
+
+                    (a, b) => {
+                        return Err(
+                            VMError::ErrString(
+                                format!(
+                                    "Cannot perform binary operation `{operator}` on mismatched types: lhs `{}` and rhs `{}`!", 
+                                    a.type_of(), b.type_of()
+                                )
+                            )
+                        );
+                    }
+                }
             },
 
             Instruction::Unary { operator } => {
@@ -162,37 +185,57 @@ impl<'a> VM<'a> {
                 self.stack.push(Value::Null);
             },
 
-            Instruction::ReloadSymbolOp { name, operator } => {
+            Instruction::ReloadSymbolOp { name } => {
+                let operator = match &self.instructions[self.pc] {
+                    Instruction::OData { operator } => operator,
+                    _ => return Err(VMError::InvalidBytecode),
+                };
+
+                self.pc += 1;
+
                 match self.symbols.get_mut(name) {
                     Some(value) => {
                         let new_value = match self.stack.pop() {
-                            Some(res) => match res {
-                                Value::Number(number) => number,
-                                Value::Null => return Err(VMError::ErrString(format!("Cannot operate `{name}` on Null type!"))),    
-                            },
+                            Some(res) => res,
                             None => return Err(VMError::InvalidBytecode), 
                         };
-                        let mut new_number = match value {
-                            Value::Number(number) => *number,
-                            Value::Null => return Err(VMError::ErrString(format!("Cannot operate Null type `{name}` on expression!"))),
-                        };
+                        match (new_value, value) {
+                            (Value::Number(a), Value::Number(b)) => {
+                                match operator {
+                                    Operator::PlusEqual => *b += a,
+                                    Operator::MinusEqual => *b -= a,
+                                    Operator::DivideEqual => *b /= a,
+                                    Operator::MultiplyEqual => *b *= a,
+                                    Operator::ExponentEqual => *b = f64::powf(*b, a),
+                                    Operator::BitOrEqual => *b = (*b as usize | a as usize) as f64,
+                                    Operator::BitAndEqual => *b = (*b as usize & a as usize) as f64,
+                                    Operator::BitXorEqual => *b = (*b as usize ^ a as usize) as f64,
+                                    Operator::BitLeftShiftEqual => *b = ((*b as usize) << a as usize) as f64,
+                                    Operator::BitRightShiftEqual => *b = (*b as usize >> a as usize) as f64,
+        
+                                    _ => unimplemented!()
+                                };
+                            }
 
-                        match operator {
-                            Operator::PlusEqual => new_number += new_value,
-                            Operator::MinusEqual => new_number -= new_value,
-                            Operator::DivideEqual => new_number /= new_value,
-                            Operator::MultiplyEqual => new_number *= new_value,
-                            Operator::ExponentEqual => new_number = f64::powf(new_number, new_value),
-                            Operator::BitOrEqual => new_number = (new_number as usize | new_value as usize) as f64,
-                            Operator::BitAndEqual => new_number = (new_number as usize & new_value as usize) as f64,
-                            Operator::BitXorEqual => new_number = (new_number as usize ^ new_value as usize) as f64,
-                            Operator::BitLeftShiftEqual => new_number = ((new_number as usize) << new_value as usize) as f64,
-                            Operator::BitRightShiftEqual => new_number = (new_number as usize >> new_value as usize) as f64,
+                            (Value::String(a), Value::String(b)) => {
+                                match operator {
+                                    Operator::PlusEqual => b.push_str(a.as_str()),
+        
+                                    _ => return Err(VMError::ErrString(format!("Cannot perform operation `{operator}` on strings!"))),
+                                };
+                            }
 
-                            _ => unimplemented!()
+                            (new_value, value) => {
+                                return Err(
+                                            VMError::ErrString(
+                                                format!(
+                                                    "Cannot perform operation `{operator}` on mismatched types: lhs `{}` and rhs `{}`!", 
+                                                    value.type_of(), new_value.type_of()
+                                                )
+                                            )
+                                        );
+                            }
                         }
-
-                        *value = Value::Number(new_number);  
                     },
                     None => return Err(VMError::ErrString(format!("Cannot find variable {name} to change its value!"))),
                 }
@@ -264,7 +307,7 @@ impl<'a> VM<'a> {
             Instruction::Null => self.stack.push(Value::Null),
 
             Instruction::Delete { name } => {
-                // Remove everything related to the name
+                // Remove every symbol related to the name
                 self.symbols.remove(name);
                 self.functions.remove(name);
 
@@ -274,15 +317,48 @@ impl<'a> VM<'a> {
                 self.stack.push(Value::Null);
             }
 
-            Instruction::FunctionDecl { name, args, end } => {
+            Instruction::FunctionDecl { name } => {
+                let args = match self.instructions[self.pc] {
+                    Instruction::UData { number } => number,
+                    _ => return Err(VMError::InvalidBytecode),
+                };
+                self.pc += 1;
+
+                let end = match self.instructions[self.pc] {
+                    Instruction::UData { number } => number,
+                    _ => return Err(VMError::InvalidBytecode),
+                };
+                self.pc += 1;
+
                 let fn_body_address = self.pc + args;
                 let fn_body_end = self.pc + end;
+                
                 self.pc += end;
-                self.functions.insert(name, Function::new(*args, fn_body_address..fn_body_end));
+                self.functions.insert(name, Function::new(args, fn_body_address..fn_body_end));
                 self.stack.push(Value::Null);
             }
 
-            _ => unimplemented!(),
+            Instruction::Print { depth } => {
+                let end = self.stack.len();
+                let drained = self.stack.drain((end - depth)..(end));
+                std::io::stdout().flush().ok();
+                for value in drained {
+                    print!("{value} ");
+                }
+                println!();
+                self.stack.push(Value::Null);
+            }
+
+            instruction => 
+                return 
+                    Err(
+                        VMError::ErrString(
+                            format!(
+                                "Unexpected instruction {instruction:?} found at {}. This is most probably an error produced by a bug in the bytecode.", 
+                                self.pc - 1
+                            )
+                        )
+                    ),
         };
         Ok(())
     }

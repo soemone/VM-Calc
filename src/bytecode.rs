@@ -21,6 +21,33 @@ impl<'a> Bytecode<'a> {
                         complete_bytecode.clear();
                         complete_bytecode.push(Instruction::CompileError);
                     } else {
+                        // Check for recursive calling
+                        if let Instruction::FunctionDecl { name } = instructions[0] {
+                            for instruction in &instructions {
+                                // This function calls another function
+                                if let Instruction::FunctionCall { name: called } = instruction {
+                                    for instruction_test in &complete_bytecode {
+                                        if let Instruction::FunctionCall { name: other_calling } = instruction_test {
+                                            // If another function calls this function, we are experiencing recursion
+                                            if other_calling == &name {
+                                                let error = 
+                                                    Error::PError { 
+                                                        message: 
+                                                        format!("The function {name} is calling the function {called}, which is again calling {name}. This recursion is not allowed"), 
+                                                        span: tree.span 
+                                                    };
+                                                println!("{error}");
+
+                                                complete_bytecode.clear();
+                                                complete_bytecode.push(Instruction::CompileError);
+                            
+                                                return complete_bytecode;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         complete_bytecode.append(&mut instructions);
                     }
                 }
@@ -53,7 +80,32 @@ impl<'a> Bytecode<'a> {
                         complete_bytecode.push(Instruction::CompileError);
                         function_bytecode.clear();
                     } else {
-                        if let Instruction::FunctionDecl { .. } = instructions[0] {
+                        if let Instruction::FunctionDecl { name } = instructions[0] {
+                            // Check for recursive calling
+                            for instruction in &instructions {
+                                // This function calls another function
+                                if let Instruction::FunctionCall { name: called } = instruction {
+                                    for instruction_test in &function_bytecode {
+                                        if let Instruction::FunctionCall { name: other_calling } = instruction_test {
+                                            // If another function calls this function, we are experiencing recursion
+                                            if other_calling == &name {
+                                                let error = 
+                                                    Error::PError { 
+                                                        message: 
+                                                        format!("The function {name} is calling the function {called}, which is again calling {name}. This recursion is not allowed"), 
+                                                        span: tree.span 
+                                                    };
+                                                println!("{error}");
+                                                complete_bytecode.clear();
+                                                complete_bytecode.push(Instruction::CompileError);
+                                                function_bytecode.clear();    
+                            
+                                                return (complete_bytecode, function_bytecode);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             function_bytecode.append(&mut (instructions.clone()));
                         }
                         complete_bytecode.append(&mut instructions);
@@ -118,7 +170,8 @@ impl<'a> Bytecode<'a> {
 
             AST::AssignOp { identifier, operator, value, .. } => {
                 let mut instructions = Self::traverse(value);
-                instructions.push(Instruction::ReloadSymbolOp { name: identifier, operator: *operator });
+                instructions.push(Instruction::ReloadSymbolOp { name: identifier });
+                instructions.push(Instruction::OData { operator: *operator });
                 instructions
             }
             
@@ -142,12 +195,16 @@ impl<'a> Bytecode<'a> {
             }
 
             AST::FunctionDecl { name, arguments, body } => {
-                let mut instructions = vec![Instruction::FunctionDecl { name, args: arguments.len(), end: 0 }];
+                let mut instructions = vec![Instruction::FunctionDecl { name }];
+               
+                instructions.push(Instruction::UData { number: arguments.len() });
+                instructions.push(Instruction::UData { number: 0 });
 
                 instructions.extend(arguments.iter().map(|name: &&str| Instruction::ArgumentName { name }));
                 instructions.extend(Self::traverse(body));
+                
                 let end = instructions.len() - 1;
-                instructions[0] = Instruction::FunctionDecl { name, args: arguments.len(), end };
+                instructions[2] = Instruction::UData { number: end - 2 };
 
                 // Check for recursion. Recursion makes no sense with single statement functions
                 for instruction in &instructions {
@@ -168,6 +225,19 @@ impl<'a> Bytecode<'a> {
             AST::Delete { name } => vec![Instruction::Delete { name }],
 
             AST::Null => vec![Instruction::Null],
+
+            AST::Print { expressions } => {
+                let mut instructions = vec![];
+                for expr in expressions {
+                    instructions.extend(Self::traverse(expr));
+                }
+                instructions.push(Instruction::Print { depth: expressions.len() });
+                instructions
+            }
+
+            AST::String { contents } => {
+                vec![Instruction::Load { value: Value::String((*contents).to_owned()) }]
+            }
 
             // Unreachable
             // _ => vec![Instruction::Illegal],

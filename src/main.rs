@@ -180,15 +180,19 @@ fn repl() {
         while i < new_fn_bytecode.len() {
             let instr = new_fn_bytecode[i].clone();
             match instr {
-                Instruction::FunctionDecl { name, .. } => {
+                Instruction::FunctionDecl { name } => {
                     if !functions.contains_key(name) {
                         fn_bytecode.push(instr);
                         functions.insert(name, fn_bytecode.len() - 1);
                     } else {
                         // Delete old function to replace with new
                         let start = *functions.get(name).unwrap();
-                        if let Some(Instruction::FunctionDecl { end, .. }) = &fn_bytecode.get(start) {
-                            fn_bytecode.drain(start..=(start + end));
+                        if let Some(Instruction::FunctionDecl { .. }) = &fn_bytecode.get(start) {
+                            let end = match fn_bytecode.get(start + 2) {
+                                Some(Instruction::UData { number }) => number,
+                                _ => panic!("Unknown error trying to run the repl!"),
+                            };
+                            fn_bytecode.drain(start..=(start + end + 2));
                         }
                         fn_bytecode.push(instr);
                     }
@@ -200,8 +204,6 @@ fn repl() {
             }
             i += 1;
         }
-
-        // println!("{instructions:?}");
 
         if time { println!("Finished compilation in {:?}", instant.elapsed()); }
         

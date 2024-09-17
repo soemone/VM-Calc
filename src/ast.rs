@@ -164,6 +164,14 @@ pub enum AST<'a> {
         name: &'a str,
     },
 
+    Print {
+        expressions: Vec<Rc<Tree<'a>>>,
+    },
+
+    String {
+        contents: String,
+    },
+
     Null,
 }
 
@@ -179,14 +187,15 @@ impl Display for AST<'_> {
             Self::Output { value } => write!(f, "*{value}*"),
             
             Self::Identifier { name } => write!(f, "{name}"),
+            Self::String { contents } => write!(f, "\"{contents}\""),
             Self::Delete { name } => write!(f, "(delete {name})"),
 
             Self::Assign { identifier, value, .. } => write!(f, "({identifier} = {value})"),
-            Self::AssignOp { operator, identifier, value, .. } => write!(f, "({identifier} {operator}= {value})"),
+            Self::AssignOp { operator, identifier, value, .. } => write!(f, "({identifier} {operator} {value})"),
             Self::DeclareAssign { identifier, value, .. } => write!(f, "(let {identifier} = {value})"),
             Self::Declare { identifier, identifier_span: _ } =>  write!(f, "(let {identifier})"),
             
-            Self::FunctionDecl { name, arguments, body } => write!(f, "let {name} {} = {body}", arguments.join(" ")),
+            Self::FunctionDecl { name, arguments, body } => write!(f, "(let {name} {} = {body})", arguments.join(" ")),
             Self::FunctionCall { name, expressions } => {
                 let mut arguments = String::new();
                 for expr in expressions {
@@ -197,6 +206,18 @@ impl Display for AST<'_> {
                     }
                 }
                 write!(f, "{name}({})", arguments)
+            }
+
+            Self::Print { expressions } => {
+                let mut arguments = String::new();
+                for expr in expressions {
+                    if arguments.is_empty() {
+                        arguments = format!("{expr}");
+                    } else {
+                        arguments = format!("{arguments}, {expr}");
+                    }
+                }
+                write!(f, "<PRINT>({})", arguments)
             }
         }
     }

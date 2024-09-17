@@ -93,6 +93,22 @@ mod tests {
     }
 
     #[test]
+    fn test_strings() -> Result<(), ()>{
+        let mut lexer = lexer::Lexer::new("\"Hello\n\" \"ABC\\\"DEF\"")?;
+        assert_eq!(
+            lexer.next(), 
+            Ok(Token::new(TokenType::String, Span::new(0, 8)))
+        );
+
+        assert_eq!(
+            lexer.next(), 
+            Ok(Token::new(TokenType::String, Span::new(9, 19)))
+        );
+        Ok(())
+    }
+
+
+    #[test]
     fn test_operators_and_delimiters() -> Result<(), ()>{
         let mut lexer = lexer::Lexer::new("* *= ** **= + += - -= = [ ( ) ] ; / /= << <<= >> >>= & &= | |= ^ ^=")?;
         use TokenType::*;

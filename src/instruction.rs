@@ -8,13 +8,15 @@ use crate::ast::Operator;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Number(f64),
+    String(String),
     Null,
 }
 
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let res = match self {
+        let res = match &self {
             Value::Number(number) => format!("{number}"),
+            Value::String(string) => {format!("{}", string)},
             // WHY?
             Value::Null => format!("{}NULL{}", "{", "}"),
         };
@@ -22,6 +24,16 @@ impl Display for Value {
     }
 }
 
+
+impl Value {
+    pub fn type_of(&self) -> &str {
+        match self {
+            Value::Null => "{Null}",
+            Value::Number(..) => "{Number}",
+            Value::String(..) => "{String}",
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[repr(align(1))]
@@ -59,7 +71,6 @@ pub enum Instruction<'a> {
     /// Change the value of a variable
     ReloadSymbolOp {
         name: &'a str,
-        operator: Operator,
     },
 
     /// Invoke the value of a variable
@@ -74,8 +85,6 @@ pub enum Instruction<'a> {
 
     FunctionDecl {
         name: &'a str,
-        args: usize,
-        end: usize,
     },
 
     ArgumentName {
@@ -85,6 +94,14 @@ pub enum Instruction<'a> {
     Delete {
         name: &'a str,
     },
+
+    Print {
+        depth: usize
+    },
+
+    UData { number: usize },
+
+    OData { operator: Operator },
 
     /// A null value
     Null,

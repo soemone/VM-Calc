@@ -24,6 +24,9 @@ pub enum TokenType {
     /// Variables or functions
     Identifier,
 
+    /// A string: "abc", "\n " etc.
+    String,
+
     // Delimiters
     /// Semicolon to seperate statements
     Semicolon,
@@ -110,6 +113,7 @@ impl Display for TokenType {
                 }
             },
             Self::Identifier => "Identifier",
+            Self::String => "String",
             Self::Semicolon => ";",
             Self::Colon => ":",
             Self::Comma => ",",

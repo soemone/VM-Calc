@@ -279,6 +279,32 @@ impl Lexer<'_> {
                 }
             },
 
+            '"' => {
+                self.increment();
+                let mut skip_next = false;
+                self.take_while(|c| {
+
+                    if skip_next && c == '"'{
+                        skip_next = false; 
+                        return true;
+                    } else if skip_next {
+                        skip_next = false; 
+                    }
+
+                    if c == '\\' {
+                        skip_next = true;
+                    }
+                    c != '"'
+                });
+                self.increment();
+                let span = Span::new(start, self.position);
+                // Check if terminated
+                if !matches!(self.current, Some('"')) {
+                    return Err(Error::TIncompleteString { span });
+                }
+                Ok(Token::new(TokenType::String, span))
+            }
+
             // Invalid characters
             _ => {
                 let location = self.position;
@@ -306,13 +332,14 @@ impl Lexer<'_> {
     }
 
     fn increment(&mut self) {
-        let character = 
-            self
-                .chars
-                .next()
-                .unwrap_or('\0');
-        self.position += character.len_utf8();
-        self.current = Some(character);
+        match self.chars.next() {
+            Some(character) => {
+                self.position += character.len_utf8();
+                self.current = Some(character);
+            },
+
+            None => self.current = None,
+        };
     }
 
     fn peek(&self) -> Result<char, ()> {
